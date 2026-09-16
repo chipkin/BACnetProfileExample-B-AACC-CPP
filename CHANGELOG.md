@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Restructured the documentation to match the series' new shape (matching
+  `BACnetProfileExample-B-SS-CPP`): `README.md` is cut down to this example
+  only (series framing, generic profile explanation, the old "Before you
+  ship" table, "Get the code", "Link mode", "Troubleshooting", "Extending the
+  example", and the inline "Objects and properties" table all removed or
+  moved out), with a new **[TUTORIAL.md](TUTORIAL.md)** (extending the
+  example, what each object needs served, a worked served-by breakdown for
+  Access Door 1 "Cobalt", reviewing your device, and troubleshooting - every
+  gap carried forward precisely from `TODO.md`) and a new
+  **[docs/PICS.md](docs/PICS.md)** (ANSI/ASHRAE 135 Annex A shape, with the
+  A-side initiate/execute split this profile needs).
+- `docs/objects.json` now includes the Device object (previously omitted
+  from the generated tables), so `docs/PICS.md`'s objects-and-properties
+  section documents all seventeen objects, not sixteen. Regenerating
+  produced zero ⚠ rows.
+- **Build changed from STATIC to the adapter's default SOURCE mode**: the
+  stack's `source/` now compiles straight into the executable, so
+  `tools/build-stack-static.sh` and the `-DCAS_BACNET_STACK_LINK=STATIC`
+  flag are no longer part of the documented build - it is now
+  `cmake -B build -S .` / `cmake --build build --config Release` on every
+  platform, identical to the rest of the series.
+  `.github/workflows/release.yml` no longer builds or caches a prebuilt
+  static library or carries per-OS `lib:` matrix entries; it asserts
+  `CAS_BACNET_STACK_LINK:STRING=SOURCE` instead of `STATIC`, records
+  `"link_mode": "SOURCE"` in `metrics.json`, and packages `TUTORIAL.md` and
+  `docs/PICS.md` alongside the binary. No footprint numbers have been
+  published yet, so there is nothing stale to refresh.
+- `main.cpp`'s `CHANGE ALL OF THIS BEFORE YOU SHIP` block now carries the
+  per-field ship guidance that used to live in the README's table, including
+  the `DEVICE_NAME` uniqueness warning and a note on picking a real
+  `DCC_PASSWORD`.
+- `AGENTS.md` updated to describe the new file layout, the SOURCE-mode
+  build, and a PICS-regeneration verification step.
+
 ## [1.0.0] - 2026-09-15
 
 ### Added
