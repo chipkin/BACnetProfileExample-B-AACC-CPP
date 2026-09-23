@@ -103,7 +103,7 @@
 // The device keeps the three read-only B-SS sensor objects and the Network
 // Port, and adds the access family:
 //
-//     Device 389010              "Rainbow"     (instance configurable with --deviceID)
+//     Device 389010              "Chipkin Example B-AACC"     (instance configurable with --deviceID)
 //     Analog Input  1             "Bronze"      (REAL, degrees Celsius; read-only)
 //     Binary Input  1             "Emerald"     (active / inactive; read-only)
 //     Multi-State Input 1         "Hot Pink"    (state 1..3; read-only)
@@ -182,7 +182,7 @@ using namespace CASBACnetStackExampleConstants;
 // 1. Example + device configuration
 // -----------------------------------------------------------------------------
 static const char* APP_NAME = "BACnet Advanced Access Control Controller (B-AACC) Example - C++";
-static const char* APP_VERSION = "1.0.1";
+static const char* APP_VERSION = "1.0.2";
 
 // The device instance. BACnet requires this to be configurable, so it defaults
 // to 389010 (docs/colour-table.md) and can be overridden on the command line
@@ -212,10 +212,10 @@ static const uint32_t VENDOR_IDENTIFIER = 389;
 // whole BACnet internetwork, and here it is a COMPILE-TIME constant. The device
 // instance is runtime-configurable via --deviceID, so it is easy to ship two
 // units, configure their instances correctly, and still have BOTH announce
-// Object_Name "Rainbow" - a spec violation, and a hard BTL failure. In a real
+// Object_Name "Chipkin Example B-AACC" - a spec violation, and a hard BTL failure. In a real
 // product Object_Name must be per-unit configurable too: derive it from a serial
 // number, DIP switches, a config file, or add a --deviceName argument.
-static const char* DEVICE_NAME = "Rainbow";
+static const char* DEVICE_NAME = "Chipkin Example B-AACC";
 
 // The Device object's Description. Change it to what YOUR device actually is;
 // this string describes this tutorial and the BIBBs it demonstrates.
@@ -1334,7 +1334,7 @@ static void LocalBroadcastConnString(uint8_t out[6]) {
 //      these three services against a peer, rather than only answering them.
 //      The peer used for wire verification is a second, separately-built
 //      local BACnetProfileExample-B-ACDC-CPP instance (device 389011,
-//      "Rainbow", Access Door 1 "Cobalt") run on a different UDP port - see
+//      "Chipkin Example B-AACC", Access Door 1 "Cobalt") run on a different UDP port - see
 //      README.md's "Verify" section for the exact two-instance test. Not
 //      modified by this repo; this file only ever talks to it over the wire.
 // -----------------------------------------------------------------------------
