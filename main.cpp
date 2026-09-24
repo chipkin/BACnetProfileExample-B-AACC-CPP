@@ -103,7 +103,7 @@
 // The device keeps the three read-only B-SS sensor objects and the Network
 // Port, and adds the access family:
 //
-//     Device 389010              "Rainbow"     (instance configurable with --deviceID)
+//     Device 389010              "Chipkin Example B-AACC"     (instance configurable with --deviceID)
 //     Analog Input  1             "Bronze"      (REAL, degrees Celsius; read-only)
 //     Binary Input  1             "Emerald"     (active / inactive; read-only)
 //     Multi-State Input 1         "Hot Pink"    (state 1..3; read-only)
@@ -167,6 +167,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <string> // std::string - g_firmwareRevision, built at runtime; see its own comment below
 #include <stdlib.h> // atoi() - used by ParsePeerArgs()
 
 #if defined(_WIN32)
@@ -181,7 +182,7 @@ using namespace CASBACnetStackExampleConstants;
 // 1. Example + device configuration
 // -----------------------------------------------------------------------------
 static const char* APP_NAME = "BACnet Advanced Access Control Controller (B-AACC) Example - C++";
-static const char* APP_VERSION = "1.0.0";
+static const char* APP_VERSION = "1.0.2";
 
 // The device instance. BACnet requires this to be configurable, so it defaults
 // to 389010 (docs/colour-table.md) and can be overridden on the command line
@@ -211,10 +212,10 @@ static const uint32_t VENDOR_IDENTIFIER = 389;
 // whole BACnet internetwork, and here it is a COMPILE-TIME constant. The device
 // instance is runtime-configurable via --deviceID, so it is easy to ship two
 // units, configure their instances correctly, and still have BOTH announce
-// Object_Name "Rainbow" - a spec violation, and a hard BTL failure. In a real
+// Object_Name "Chipkin Example B-AACC" - a spec violation, and a hard BTL failure. In a real
 // product Object_Name must be per-unit configurable too: derive it from a serial
 // number, DIP switches, a config file, or add a --deviceName argument.
-static const char* DEVICE_NAME = "Rainbow";
+static const char* DEVICE_NAME = "Chipkin Example B-AACC";
 
 // The Device object's Description. Change it to what YOUR device actually is;
 // this string describes this tutorial and the BIBBs it demonstrates.
@@ -228,9 +229,6 @@ static const char* DEVICE_DESCRIPTION =
 //   VENDOR_NAME - your company name; it must match VENDOR_IDENTIFIER above.
 //   MODEL_NAME  - your model designation. This is what a building operator reads
 //                 to identify your device in a discovery tool.
-//   FIRMWARE_REVISION / APPLICATION_SOFTWARE_VERSION - your real versions. Wire
-//                 them to your build rather than hard-coding a number that will
-//                 go stale.
 static const char* VENDOR_NAME = "Chipkin Automation Systems";
 static const char* MODEL_NAME = "CAS BACnet Stack Example - B-AACC";
 
@@ -239,8 +237,23 @@ static const char* MODEL_NAME = "CAS BACnet Stack Example - B-AACC";
 // string literal) before shipping a product - this is what stops a stranger on
 // the network from disabling your device's communications or forcing a restart.
 static const char* DCC_PASSWORD = "";
-static const char* FIRMWARE_REVISION = "1.0.0";
-static const char* APPLICATION_SOFTWARE_VERSION = "1.0.0";
+
+// Application_Software_Version (12) is just APP_VERSION - one source of
+// truth, so it can never drift from what --version/the startup banner
+// prints (it did drift: this used to be a separate hardcoded "1.0.0"
+// constant nobody updated across several patch releases - found via a real
+// device read, not code review, by someone actually testing the built
+// device's Device object properties).
+//
+// Firmware_Revision (44) is meant to name the underlying platform/stack,
+// not this example's own version - built at runtime from the CAS BACnet
+// Stack's own BACnetStack_GetAPIMajorVersion()/etc. (the same 4 calls
+// common/CASExampleHelper.cpp's PrintVersion() already uses for the
+// startup banner's "CAS BACnet Stack version: X.Y.Z.W" line), so it can
+// never go stale either - see g_firmwareRevision below, populated once
+// right after LoadBACnetFunctions() succeeds (those functions are what
+// the version getters themselves are, so they must be loaded first).
+static std::string g_firmwareRevision;
 
 // The sensor objects (all instance 1) and their colour names.
 static const uint32_t ANALOG_INPUT_INSTANCE = 1;       // "Bronze"
@@ -865,9 +878,9 @@ bool GetPropertyCharString(const uint32_t deviceInstance, const uint16_t objectT
             case PROPERTY_IDENTIFIER_MODEL_NAME:
                 return ReturnCharacterString(MODEL_NAME, value, valueElementCount, maxElementCount, encodingType);
             case PROPERTY_IDENTIFIER_FIRMWARE_REVISION:
-                return ReturnCharacterString(FIRMWARE_REVISION, value, valueElementCount, maxElementCount, encodingType);
+                return ReturnCharacterString(g_firmwareRevision.c_str(), value, valueElementCount, maxElementCount, encodingType);
             case PROPERTY_IDENTIFIER_APPLICATION_SOFTWARE_VERSION:
-                return ReturnCharacterString(APPLICATION_SOFTWARE_VERSION, value, valueElementCount, maxElementCount, encodingType);
+                return ReturnCharacterString(APP_VERSION, value, valueElementCount, maxElementCount, encodingType);
             default:
                 break;
         }
@@ -1321,7 +1334,7 @@ static void LocalBroadcastConnString(uint8_t out[6]) {
 //      these three services against a peer, rather than only answering them.
 //      The peer used for wire verification is a second, separately-built
 //      local BACnetProfileExample-B-ACDC-CPP instance (device 389011,
-//      "Rainbow", Access Door 1 "Cobalt") run on a different UDP port - see
+//      "Chipkin Example B-AACC", Access Door 1 "Cobalt") run on a different UDP port - see
 //      README.md's "Verify" section for the exact two-instance test. Not
 //      modified by this repo; this file only ever talks to it over the wire.
 // -----------------------------------------------------------------------------
@@ -1483,6 +1496,19 @@ int main(int argc, char** argv) {
     if (!LoadBACnetFunctions()) {
         fprintf(stderr, "Error: failed to load the CAS BACnet Stack: %s\n", CASBACnetStackAdapter_LastError());
         return 1;
+    }
+
+    // g_firmwareRevision (Device object property 44) - see its own doc
+    // comment above for why this is the STACK's version, not this example's
+    // own (that's Application_Software_Version/APP_VERSION instead). Must
+    // happen after LoadBACnetFunctions() (these getters ARE some of the
+    // functions it loads) and before the Device object is ever readable.
+    {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%u.%u.%u.%u",
+                 BACnetStack_GetAPIMajorVersion(), BACnetStack_GetAPIMinorVersion(),
+                 BACnetStack_GetAPIPatchVersion(), BACnetStack_GetAPIBuildVersion());
+        g_firmwareRevision = buf;
     }
 
     if (CASExampleHelper::HandleHelpAndVersionArgs(argc, argv, APP_NAME, APP_VERSION)) {

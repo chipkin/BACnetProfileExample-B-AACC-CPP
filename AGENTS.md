@@ -76,7 +76,7 @@ SendReadProperty/SendWriteProperty/SendSubscribeCOV against the peer.
 
 ## Conventions
 
-- Device is named "Rainbow"; objects use the series' colour names; vendor id 389.
+- Device is named "Chipkin Example B-AACC"; objects use the series' colour names; vendor id 389.
 - Implement the B-AACC services the stack supports; expose **every required
   property** of each object for Protocol_Revision 24. Anything B-AACC
   requires that is NOT implemented must be listed in [TODO.md](TODO.md) and

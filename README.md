@@ -39,7 +39,7 @@ controllers over the wire.
 
 | Object | Name | Notes |
 |---|---|---|
-| Device 389010 | Rainbow | `--deviceID` overrides |
+| Device 389010 | Chipkin Example B-AACC | `--deviceID` overrides |
 | Analog Input 1 | Bronze | REAL, degrees Celsius; read-only; COV-subscribable |
 | Binary Input 1 | Emerald | active/inactive; read-only |
 | Multi-State Input 1 | Hot Pink | state 1..3; read-only |
@@ -112,7 +112,7 @@ New in this profile, on top of everything B-ACC-CPP serves. This device also
 **initiates** requests against a peer device - a separately-built,
 separately-run local instance of
 [BACnetProfileExample-B-ACDC-CPP](https://github.com/chipkin/BACnetProfileExample-B-ACDC-CPP)
-(device 389011 "Rainbow", Access Door 1 "Cobalt"), not modified by this
+(device 389011 "Chipkin Example B-AACC", Access Door 1 "Cobalt"), not modified by this
 repository:
 
 | Key | Service | Target |
@@ -222,7 +222,7 @@ BACnet Advanced Access Control Controller (B-AACC) Example - C++ v1.0.0
 CAS BACnet Stack version: 6.0.21.0
 Common helper (common/) version: 2.5.0
 FYI: Listening for BACnet/IP on UDP port 47808 (Network Port 1).
-FYI: Device 389010 ("Rainbow") ready. Vendor ID 389. Press 'h' for help.
+FYI: Device 389010 ("Chipkin Example B-AACC") ready. Vendor ID 389. Press 'h' for help.
 FYI: A-side peer target 127.0.0.1:47809 (override with --peerIp/--peerPort). Keys: 'd' SendReadProperty, 'w' SendWriteProperty, 'r' SendSubscribeCOV - all to the peer's Access Door 1.
 ```
 
@@ -286,7 +286,7 @@ plus a real second local instance of B-ACDC-CPP as the A-side peer:
    [The device this example creates](#the-device-this-example-creates)).
    Reading the Device's `Object_List` returns all of them.
 3. **Read the Device** - ReadProperty `389010` -> `Object_Name` returns
-   `"Rainbow"`; `Protocol_Revision` returns `24`.
+   `"Chipkin Example B-AACC"`; `Protocol_Revision` returns `24`.
 4. **DS-ACUC-B** - WriteProperty Cobalt's `Present_Value` to `unlock`(1) at a
    priority; confirm `Lock_Status`/`Door_Status` follow; relinquish and
    confirm it falls back to `Relinquish_Default` (`lock`).
