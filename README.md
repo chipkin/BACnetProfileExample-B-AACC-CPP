@@ -1,5 +1,34 @@
 # BACnet B-AACC (Advanced Access Control Controller) - C++ example
 
+> **Blocked Example.** The CAS BACnet Stack cannot yet perform the B-AACC
+> Profile Function - authentication and authorization for physical access,
+> configured through the device's Access User, Access Credential and Access
+> Rights objects, using remote door controllers and credential readers, and
+> reported as access events (ANSI/ASHRAE 135-2024 Annex L.6.1) - through its
+> customer interface, so this example stays published but is **blocked** on
+> two stack gaps. On 2026-10-15 the stack owner ruled that neither is promoted
+> to the customer interface for now:
+>
+> - **[cas-bacnet-stack#2150](https://github.com/chipkin/cas-bacnet-stack/issues/2150)** -
+>   the properties that carry the authorization data cannot be served: an
+>   Access Credential's `Authentication_Factors` and `Assigned_Access_Rights`,
+>   an Access Rights object's `Positive_Access_Rules` and
+>   `Negative_Access_Rules`, an Access Point's `Access_Doors` (each answers
+>   Error unknown-property) and `Access_Event_Credential` (Abort). So another
+>   device cannot read or configure who may pass where, and DS-ACUC-B and
+>   DS-ACSC-B cannot be claimed.
+> - **[cas-bacnet-stack#2044](https://github.com/chipkin/cas-bacnet-stack/issues/2044)** -
+>   no customer-facing algorithm generates an ACCESS_EVENT notification, so
+>   AE-AC-B (and with it AE-EL-I-B) cannot be claimed.
+>
+> What it does today: everything B-ACC-CPP does (a discoverable BACnet/IP
+> device with the access object family, a Schedule that unlocks its door,
+> COV, DeviceCommunicationControl, time synchronization, ReinitializeDevice,
+> backup/restore), plus an Access User object, and it **sends** ReadProperty,
+> WriteProperty and SubscribeCOV to a peer's door. It cannot use the replies
+> (no customer callback delivers them), and it makes **no** grant/deny
+> decision.
+
 A minimal, copy-paste-friendly example showing how to implement the BACnet
 **B-AACC (Advanced Access Control Controller)** device profile in C++ using
 the [CAS BACnet Stack](https://store.chipkin.com/services/stacks/bacnet-stack).
@@ -19,21 +48,24 @@ everything B-ACC-CPP serves, plus an Access User object and the A-side
 - **[docs/PICS.md](docs/PICS.md)** - the Protocol Implementation Conformance
   Statement: every object, every property, and who answers it.
 
-> **Versions:** this document describes **example v1.0.0**, built and verified
-> against **CAS BACnet Stack 6.0.21** (`6.x` @ `abd4cee1`), at
-> **Protocol_Revision 24**, with the vendored `common/` helper at **v2.5.0**.
+> **Versions:** this document describes **example v1.1.0**, built and verified
+> against **CAS BACnet Stack 6.0.23** (`6.x` @ `64b2cfac5`), at
+> **Protocol_Revision 30**, with the vendored `common/` helper at **v3.3.0**.
 > Running the example prints all three - if what it prints disagrees with this
 > line, trust the program and check `CHANGELOG.md`.
 
 ## What is the B-AACC (Advanced Access Control Controller) profile?
 
-**B-AACC**, defined in Annex L.6 of ANSI/ASHRAE 135, is a B-ACC plus the
-ability to **initiate** requests of its own. In addition to everything a
-B-ACC serves (door hardware, credential readers, Access Door/Point/Zone/
-Credential/Rights, access events, scheduled unlock windows, backup/restore),
-a B-AACC also reads, writes, and subscribes to other devices as a client -
-the natural role of a head-end access controller talking to subordinate door
-controllers over the wire.
+**B-AACC**, defined in Annex L.6.1 of ANSI/ASHRAE 135-2024, "performs
+physical access control authentication and authorization for physical access.
+It supports the modification of its Access User, Access Credential, and Access
+Rights objects by another device. ... It is capable to use remote Access
+Control Door Controller devices and remote Access Control Credential Reader
+devices." Compared with B-ACC (L.6.2) it adds Access User objects, the A-side
+(it reads, writes and subscribes to other devices as a client - a head-end
+access controller talking to subordinate door controllers), event logging and
+backup/restore. This example does not perform that function (see the Blocked
+Example note above).
 
 ## The device this example creates
 
@@ -43,16 +75,16 @@ controllers over the wire.
 | Analog Input 1 | Bronze | REAL, degrees Celsius; read-only; COV-subscribable |
 | Binary Input 1 | Emerald | active/inactive; read-only |
 | Multi-State Input 1 | Hot Pink | state 1..3; read-only |
-| Access Door 1 | Cobalt | BACnetDoorValue; commandable (lock/unlock) - DS-ACUC-B, SCHED-I-B target |
+| Access Door 1 | Cobalt | BACnetDoorValue; commandable (lock/unlock); SCHED-I-B target |
 | Credential Data Input 1 | Flax | AuthenticationFactor; Update_Time COV-subscribable |
-| Access Point 1 | Copper | Access_Event demo target; Authorization_Mode writable (DS-ACSC-B) |
+| Access Point 1 | Copper | Access_Event writable (demo); Authorization_Mode writable, stored, gates nothing |
 | Access Zone 1 | Ebony | Occupancy_State |
 | Access Credential 1 | Coral | Credential_Status |
 | Access Rights 1 | Cyan | Enable; Global_Identifier writable |
-| **Access User 1** | **Denim** | **New in this profile.** User_Type; Global_Identifier writable |
-| Event Log 1 | Beige | AE-EL-I-B |
+| **Access User 1** | **Denim** | **New in this profile.** User_Type; Global_Identifier writable; Credentials an empty list (TODO.md #2) |
+| Event Log 1 | Beige | logs nothing: no event notification is ever generated (TODO.md #1) |
 | Schedule 1 | Saffron | writes Cobalt at priority 12 |
-| Calendar 1 | Cream | Date_List not populatable (see docs/PICS.md) |
+| Calendar 1 | Cream | Date_List empty: added with the generic `AddObject`, not the stack's Calendar engine (TODO.md #3) |
 | File 1 | Ivory | stream access, backup/restore payload |
 | Notification Class 1 | Crimson | routes Copper's alarms |
 | Network Port 1 | Vermilion | BACnet/IP |
@@ -69,18 +101,18 @@ table below is the summary.
 | BIBB | Description | Supported |
 |------|-------------|:---------:|
 | DS-RP-B, DS-RPM-B | ReadProperty / ReadPropertyMultiple (execute) | ✅ |
-| DS-RP-A | ReadProperty (**initiate** - `SendReadProperty`, key 'd') | ✅ |
+| DS-RP-A | ReadProperty (**initiate** - `SendReadProperty`, key 'd') | ☐ partial: the request is sent; the reply cannot be consumed (no customer callback, TODO.md #6) |
 | DS-WP-B, DS-WPM-B | WriteProperty / WritePropertyMultiple (execute) | ✅ |
-| DS-WP-A | WriteProperty (**initiate** - `SendWriteProperty`, key 'w') | ✅ |
+| DS-WP-A | WriteProperty (**initiate** - `SendWriteProperty`, key 'w') | ✅ sends (changed a B-ACDC peer's door at v1.0.0; the result cannot be observed in-process, TODO.md #6) |
 | DS-COV-B | SubscribeCOV (execute - Bronze's Present_Value, Flax's Update_Time) | ✅ |
-| DS-COV-A | SubscribeCOV (**initiate** - `SendSubscribeCOV`, key 'r') | ✅ |
-| DS-ACAD-A | Access Control Access Doors (initiate - the peer's door object) | ✅ |
-| DS-ACCDI-A | Access Control Credential Data Input (initiate) | ☐ not implemented ([#492](https://github.com/chipkin/cas-bacnet-stack/issues/492)) |
-| DS-ACUC-B | Access Control Unlock Command (WriteProperty Cobalt) | ✅ |
-| DS-ACSC-B | Access Control Supervisory Command (WriteProperty Copper's Authorization_Mode) | ✅ |
-| AE-AC-B | Report access alarms/events | ☐ not implemented ([#2044](https://github.com/chipkin/cas-bacnet-stack/issues/2044)) |
+| DS-COV-A | SubscribeCOV (**initiate** - `SendSubscribeCOV`, key 'r') | ☐ the request is sent, but has never succeeded (the B-ACDC peer has no SubscribeCOV) and notifications cannot be received (TODO.md #6) |
+| DS-ACAD-A | Data Sharing - Access Control Access Door - A (K.1.37: read and write all forms of all standard properties of Access Door objects) | ☐ not claimed: only the peer door's `Present_Value` is touched |
+| DS-ACCDI-A | Data Sharing - Access Control Credential Data Input - A (K.1.39) | ☐ not claimed (TODO.md #5) |
+| DS-ACUC-B | Data Sharing - Access Control User Configuration - B (K.1.34: read/write the standard properties of Access Rights, Access User, Access Credential) | ❌ blocked on [#2150](https://github.com/chipkin/cas-bacnet-stack/issues/2150) |
+| DS-ACSC-B | Data Sharing - Access Control Site Configuration - B (K.1.36: read/write the standard properties of Access Point, Access Zone, Access Door, Credential Data Input) | ❌ blocked on [#2150](https://github.com/chipkin/cas-bacnet-stack/issues/2150) (Access Point) |
+| AE-AC-B | Alarm and Event Management - Access Control - B (K.2.32: generate ACCESS_EVENT notifications) | ❌ blocked on [#2044](https://github.com/chipkin/cas-bacnet-stack/issues/2044) |
 | AE-ACK-B, AE-INFO-B | Accept AcknowledgeAlarm, answer GetEventInformation | ✅ |
-| AE-EL-I-B | Event Log interface (ReadRange of Beige's Log_Buffer) | ✅ |
+| AE-EL-I-B | Alarm and Event Management - Event Log - Internal - B (K.2.21: collect event notifications in an internal buffer) | ❌ nothing to collect: no notification is generated (#2044) |
 | SCHED-I-B | Schedule/Calendar initiate (Saffron unlocks Cobalt on a schedule) | ✅ |
 | DM-BR-B | Backup and Restore (Ivory carries the payload) | ✅ |
 | DM-DDB-A,B, DM-DOB-B | Who-Is/I-Am (answer + initiate), Who-Has/I-Have | ✅ |
@@ -88,17 +120,24 @@ table below is the summary.
 | DM-TS-B / DM-UTC-B | TimeSynchronization / UTCTimeSynchronization | ✅ |
 | DM-RD-B | ReinitializeDevice (also drives the backup/restore state machine) | ✅ |
 
-**DS-ACCDI-A stays unimplemented (☐).** The actual add/configure function for
-a Credential Data Input object (`BACnetStackTestTool_AddCredentialDataInputObject`)
-exists only in `CASBACnetStackTestToolDLL.h` - it is not reachable from any
-customer-facing build, including this one. See `docs/PICS.md` and `TODO.md`
-#7 for the full trace.
+**DS-ACCDI-A is not claimed.** It needs a COV subscription to a remote
+Credential Data Input and the ability to receive the AuthenticationFactor
+values in the notifications; this example sends no such subscription and has
+no customer callback to receive notifications. See `TODO.md` #5 and #6.
 
-**AE-AC-B stays unimplemented (☐).** No intrinsic algorithm on the
-customer-facing surface can generate a true `accessEvent`-typed notification
-at this pin; Access Point 1 ("Copper")'s `Access_Event` property is real and
-writable, and a generic `changeOfState`-typed notification is produced for it
-instead, disclosed rather than hidden. See `TODO.md` #1.
+**AE-AC-B is not claimed.** No intrinsic algorithm on the customer-facing
+surface can generate an `accessEvent`-typed notification at this pin, and the
+stack rejects the generic change-of-state algorithm on an Access Point, so no
+notification of any kind is produced. Access Point 1 ("Copper")'s
+`Access_Event` property is real and writable. (Earlier versions of this
+README said a `changeOfState` notification was produced instead; it was not.)
+See `TODO.md` #1.
+
+**DS-ACUC-B and DS-ACSC-B are not claimed.** Earlier versions named them
+"Unlock Command" and "Supervisory Command" and ticked them for the door and
+Authorization_Mode writes. K.1.34 and K.1.36 define them as answering reads
+and writes of the standard properties of the access objects, which stack
+#2150 prevents. See `TODO.md` #2.
 
 ### Services and objects
 
@@ -112,7 +151,7 @@ New in this profile, on top of everything B-ACC-CPP serves. This device also
 **initiates** requests against a peer device - a separately-built,
 separately-run local instance of
 [BACnetProfileExample-B-ACDC-CPP](https://github.com/chipkin/BACnetProfileExample-B-ACDC-CPP)
-(device 389011 "Chipkin Example B-AACC", Access Door 1 "Cobalt"), not modified by this
+(device 389011 "Chipkin Example B-ACDC", Access Door 1 "Cobalt"), not modified by this
 repository:
 
 | Key | Service | Target |
@@ -155,6 +194,8 @@ submodule gates.
 This is a **self-contained** project. It ships:
 
 - `main.cpp` - the example device.
+- `tests/` - the Wire Tests (see [Wire Tests](#wire-tests)), and `wiretest/`, the
+  series' shared Python harness they are written against (vendored, like `common/`).
 - `common/` - the shared helper (UDP, callbacks, CLI, keyboard) vendored in.
 - `CMakeLists.txt` - the build, the same on Windows, Linux, and macOS.
 - `docs/PICS.md` - the conformance statement.
@@ -218,23 +259,32 @@ point CMake at it: `cmake -B build -S . -D CAS_STACK_DIR=/path/to/cas-bacnet-sta
 Expected output:
 
 ```
-BACnet Advanced Access Control Controller (B-AACC) Example - C++ v1.0.0
-CAS BACnet Stack version: 6.0.21.0
-Common helper (common/) version: 2.5.0
+BACnet Advanced Access Control Controller (B-AACC) Example - C++ v1.1.0
+CAS BACnet Stack version: 6.0.23.0
+Common helper (common/) version: 3.3.0
 FYI: Listening for BACnet/IP on UDP port 47808 (Network Port 1).
+TX 21 bytes to 192.168.3.255:47808 (broadcast) (Network Port 1) - Unconfirmed: I-Am
+TX 8 bytes to 192.168.3.255:47808 (broadcast) (Network Port 1) - Unconfirmed: Who-Is
 FYI: Device 389010 ("Chipkin Example B-AACC") ready. Vendor ID 389. Press 'h' for help.
 FYI: A-side peer target 127.0.0.1:47809 (override with --peerIp/--peerPort). Keys: 'd' SendReadProperty, 'w' SendWriteProperty, 'r' SendSubscribeCOV - all to the peer's Access Door 1.
+TX 17 bytes to 127.0.0.1:47809 (Network Port 1) - ConfirmedRequest: ReadProperty Access_Door 1.Present_Value
+A-side: sent SendReadProperty to peer 127.0.0.1:47809 (Access Door 1 Present_Value).
+TX 23 bytes to 127.0.0.1:47809 (Network Port 1) - ConfirmedRequest: WriteProperty Access_Door 1.Present_Value
+A-side: sent SendWriteProperty to peer (Access Door 1 Present_Value <- 1 [unlock]).
+TX 22 bytes to 127.0.0.1:47809 (Network Port 1) - ConfirmedRequest: SubscribeCOV
+A-side: sent SendSubscribeCOV to peer (Access Door 1, 300s lifetime).
 ```
 
 The device listens on UDP **47808** (BACnet/IP). Allow that port through your
 firewall. To use a different port, pass `--port` (see below).
 
-> **A wall of red `Error:` lines at start-up is expected and is not your
-> bug** - part of it is the stack's own debug logging shared by every example
-> in this series (the device hearing its own broadcast I-Am, a one-time
-> BACnet/SC UUID notice); this repository additionally has a **continuous**
-> log flood from adding the Event Log object. [TUTORIAL.md](TUTORIAL.md#troubleshooting)
-> explains all of it.
+> **Red `Error:` lines at start-up are expected and are not your bug** - the
+> stack's own debug logging shared by every example in this series (the device
+> hearing its own broadcast I-Am, a one-time BACnet/SC UUID notice).
+> [TUTORIAL.md](TUTORIAL.md#troubleshooting) explains it. (The continuous log
+> flood an Event Log caused at stack 6.0.21,
+> [#2045](https://github.com/chipkin/cas-bacnet-stack/issues/2045), is fixed at
+> this pin.)
 
 ### Two-instance test setup (this device + its A-side peer)
 
@@ -282,12 +332,12 @@ plus a real second local instance of B-ACDC-CPP as the A-side peer:
 1. **Discover** - send a **Who-Is**. The device replies with **I-Am** from
    instance **389010** (vendor **389**). It also broadcasts an I-Am at
    start-up.
-2. **Browse the object model** - the device shows sixteen objects (see
+2. **Browse the object model** - the device shows seventeen objects (see
    [The device this example creates](#the-device-this-example-creates)).
    Reading the Device's `Object_List` returns all of them.
 3. **Read the Device** - ReadProperty `389010` -> `Object_Name` returns
-   `"Chipkin Example B-AACC"`; `Protocol_Revision` returns `24`.
-4. **DS-ACUC-B** - WriteProperty Cobalt's `Present_Value` to `unlock`(1) at a
+   `"Chipkin Example B-AACC"`; `Protocol_Revision` returns `30`.
+4. **Door command** - WriteProperty Cobalt's `Present_Value` to `unlock`(1) at a
    priority; confirm `Lock_Status`/`Door_Status` follow; relinquish and
    confirm it falls back to `Relinquish_Default` (`lock`).
 5. **Access User 1 (Denim)** - ReadProperty `Object_Name` returns `"Denim"`;
@@ -299,17 +349,37 @@ plus a real second local instance of B-ACDC-CPP as the A-side peer:
    [A-side (client) keys](#a-side-client-keys).
 7. **Confirm the documented gaps stay gaps** - `docs/PICS.md` and `TODO.md`
    list every property/service this build cannot serve; confirm a read of
-   one of them (e.g. Access User's `Credentials`) fails the way TODO.md says
-   it does, not silently.
+   one of them (e.g. Access Credential's `Authentication_Factors`) fails the
+   way TODO.md says it does, not silently.
 
 For a property-by-property review against the conformance statement, and the
 full Troubleshooting table, see [TUTORIAL.md](TUTORIAL.md).
+
+## Wire Tests
+
+A Python BACnet client drives the running example over BACnet/IP from outside
+it, the way a client discovers a device - Who-Is, the Device's `Object_List`,
+then for every object its `Property_List` and a ReadProperty of every property
+it lists. Every read must come back as a value, except the Event Log's
+`Log_Buffer`, which the standard makes ReadRange-only. The six properties stack
+#2150 cannot serve are reported as `[KNOWN GAP]` lines and do not fail the run.
+Python 3 standard library only:
+
+```bash
+python3 tests/run_wire_tests.py --exe build/BACnetExampleBAACC          # Linux/macOS
+python tests\run_wire_tests.py --exe build\Release\BACnetExampleBAACC.exe   # Windows
+```
+
+It ends with `ALL WIRE TESTS PASSED` (exit 0). CI runs it on Linux after the
+smoke test. [tests/README.md](tests/README.md) says what each check proves. It
+tests the B side only: it does not test the Profile Function (the example
+cannot perform it) or the A-side sends.
 
 
 ## The BACnet profile example series
 
 <!-- PROFILE-TABLE:BEGIN (generated from cas-bacnet-stack-examples/docs/profile-table.md - do not edit here) -->
-The CAS BACnet Stack supports every standardized device profile in ASHRAE 135-2024 Annex L, and there is one example repository per profile. Pick the profile your device claims, then the language you build in. "Ask" means the example hasn't been built yet for that language - [contact Chipkin](https://store.chipkin.com/contact-us) if you need one.
+There is one example repository per standardized device profile in ASHRAE 135-2024 Annex L. An example marked ⛔ is blocked: the stack cannot yet perform that profile's function through its customer interface, and the example's README says what it does today. Pick the profile your device claims, then the language you build in. "Ask" means the example hasn't been built yet for that language - [contact Chipkin](https://store.chipkin.com/contact-us) if you need one.
 
 ### Controllers (Annex L.4)
 
@@ -332,8 +402,8 @@ The CAS BACnet Stack supports every standardized device profile in ASHRAE 135-20
 
 | Profile | C++ | Node.js | C# | Rust | Python | Go |
 |---|---|---|---|---|---|---|
-| **B-ACC** Access Control Controller | [B-ACC-CPP](https://github.com/chipkin/BACnetProfileExample-B-ACC-CPP) | Ask | Ask | Ask | Ask | Ask |
-| **B-AACC** Advanced Access Control Controller | [B-AACC-CPP](https://github.com/chipkin/BACnetProfileExample-B-AACC-CPP) | Ask | Ask | Ask | Ask | Ask |
+| **B-ACC** Access Control Controller | [B-ACC-CPP](https://github.com/chipkin/BACnetProfileExample-B-ACC-CPP) ⛔ blocked on [stack #2150](https://github.com/chipkin/cas-bacnet-stack/issues/2150), [#2044](https://github.com/chipkin/cas-bacnet-stack/issues/2044) | Ask | Ask | Ask | Ask | Ask |
+| **B-AACC** Advanced Access Control Controller | [B-AACC-CPP](https://github.com/chipkin/BACnetProfileExample-B-AACC-CPP) ⛔ blocked on [stack #2150](https://github.com/chipkin/cas-bacnet-stack/issues/2150), [#2044](https://github.com/chipkin/cas-bacnet-stack/issues/2044) | Ask | Ask | Ask | Ask | Ask |
 
 ### Lighting controllers (Annex L.11)
 
@@ -354,7 +424,7 @@ The CAS BACnet Stack supports every standardized device profile in ASHRAE 135-20
 
 | Profile | C++ | Node.js | C# | Rust | Python | Go |
 |---|---|---|---|---|---|---|
-| **B-AS** Authorization Server | [B-AS-CPP](https://github.com/chipkin/BACnetProfileExample-B-AS-CPP) | Ask | Ask | Ask | Ask | Ask |
+| **B-AS** Authorization Server | [B-AS-CPP](https://github.com/chipkin/BACnetProfileExample-B-AS-CPP) ⛔ blocked on [stack #2043](https://github.com/chipkin/cas-bacnet-stack/issues/2043) | Ask | Ask | Ask | Ask | Ask |
 
 ### Miscellaneous (Annex L.7, combinable with any one family)
 
@@ -362,10 +432,10 @@ The CAS BACnet Stack supports every standardized device profile in ASHRAE 135-20
 |---|---|---|---|---|---|---|
 | **B-BBMD** Broadcast Management Device | [B-BBMD-CPP](https://github.com/chipkin/BACnetProfileExample-B-BBMD-CPP) | Ask | Ask | Ask | Ask | Ask |
 | **B-ACDC** Access Control Door Controller | [B-ACDC-CPP](https://github.com/chipkin/BACnetProfileExample-B-ACDC-CPP) | Ask | Ask | Ask | Ask | Ask |
-| **B-ACCR** Access Control Credential Reader | [B-ACCR-CPP](https://github.com/chipkin/BACnetProfileExample-B-ACCR-CPP) | Ask | Ask | Ask | Ask | Ask |
+| **B-ACCR** Access Control Credential Reader | [B-ACCR-CPP](https://github.com/chipkin/BACnetProfileExample-B-ACCR-CPP) ⛔ blocked on [stack #3934](https://github.com/chipkin/cas-bacnet-stack/issues/3934) | Ask | Ask | Ask | Ask | Ask |
 | **B-RTR** Router | [B-RTR-CPP](https://github.com/chipkin/BACnetProfileExample-B-RTR-CPP) | Ask | Ask | Ask | Ask | Ask |
 | **B-GW** Gateway | [B-GW-CPP](https://github.com/chipkin/BACnetProfileExample-B-GW-CPP) | Ask | Ask | Ask | Ask | Ask |
-| **B-DAP** Device Address Proxy | [B-DAP-CPP](https://github.com/chipkin/BACnetProfileExample-B-DAP-CPP) | Ask | Ask | Ask | Ask | Ask |
+| **B-DAP** Device Address Proxy | [B-DAP-CPP](https://github.com/chipkin/BACnetProfileExample-B-DAP-CPP) ⛔ blocked on [stack #2032](https://github.com/chipkin/cas-bacnet-stack/issues/2032) | Ask | Ask | Ask | Ask | Ask |
 | **B-SCHUB** BACnet/SC Hub | [B-SCHUB-CPP](https://github.com/chipkin/BACnetProfileExample-B-SCHUB-CPP) | Ask | Ask | Ask | Ask | Ask |
 | **B-GENERAL** General device (Annex L.8) | *(satisfied by every example above)* | — | — | — | — | — |
 
@@ -393,7 +463,7 @@ Client-side profiles.
 | **B-EWS** Elevator Workstation | planned | — | — | — | — | — |
 | **B-AEWS** Advanced Elevator Workstation | planned | — | — | — | — | — |
 
-🚧 = in progress. "Ask" = not yet built for that language; contact Chipkin if you need it. Profile definitions: ANSI/ASHRAE 135-2024 Annex L. BIBB definitions: Annex K. Get the stack: <https://store.chipkin.com/services/stacks/bacnet-stack>.
+🚧 = in progress. ⛔ = Blocked Example (blocked on the named stack gap). "Ask" = not yet built for that language; contact Chipkin if you need it. Profile definitions: ANSI/ASHRAE 135-2024 Annex L. BIBB definitions: Annex K. Get the stack: <https://store.chipkin.com/services/stacks/bacnet-stack>.
 <!-- PROFILE-TABLE:END -->
 
 ## References

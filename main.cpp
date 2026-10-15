@@ -4,9 +4,13 @@
 // =============================================================================
 // BACnet Profile Example - B-AACC (Advanced Access Control Controller) - C++
 //
-// This example implements as much of the BACnet "B-AACC" (Advanced Access
-// Control Controller) device profile as the CAS BACnet Stack's CUSTOMER-FACING API
-// supports today. It is seeded from BACnetProfileExample-B-ACC-CPP (Access Control
+// BLOCKED EXAMPLE (stack #2150, #2044). This example implements as much of the
+// BACnet "B-AACC" (Advanced Access Control Controller) device profile as the CAS
+// BACnet Stack's CUSTOMER-FACING API supports today - which does not include the
+// Profile Function itself: the authorization data properties (#2150) and
+// ACCESS_EVENT notifications (#2044) are not on the customer interface at the
+// Stack Pin (6.x @ 64b2cfac5), and this file makes no grant/deny decision. See
+// README.md and TODO.md. It is seeded from BACnetProfileExample-B-ACC-CPP (Access Control
 // Controller, Wave 3, released v1.0.0) and extends it with an Access User object
 // plus the A-side (client) SendReadProperty/SendWriteProperty/SendSubscribeCOV keys
 // - see section 2.5 below. B-ACC-CPP itself was seeded from B-LSC (Life Safety
@@ -15,27 +19,37 @@
 // added in their place; that lineage is why several comments below still reference
 // B-LSC's own file header as the original source of a pattern.
 //
-// A B-AACC (ANSI/ASHRAE 135, Annex L.6) must support everything a B-ACC does, PLUS the
-// A-side (initiating) services below - the delta this file adds on top of B-ACC-CPP:
+// A B-AACC (ANSI/ASHRAE 135-2024, Annex L.6.1; BIBBs from the Annex L.6 table)
+// must support:
 //
-//     DS-RP-B, DS-RPM-B     - ReadProperty + ReadPropertyMultiple,
-//     DS-RP-A               - initiate ReadProperty (SendReadProperty to a peer - key 'd'),
-//     DS-WP-B, DS-WPM-B     - WriteProperty + WritePropertyMultiple,
-//     DS-WP-A               - initiate WriteProperty (SendWriteProperty to a peer - key 'w'),
-//     DS-COV-A              - initiate SubscribeCOV (SendSubscribeCOV to a peer - key 'r'),
-//     DS-COV-B              - SubscribeCOV,
-//     DS-ACAD-A             - Access Control Access Doors, initiate (the peer's Access
-//                              Door object is the A-side's actual read/write/COV target),
-//     DS-ACCDI-A             - Access Control Credential Data Input, initiate - NOT
-//                              implemented; see TODO.md #7 (re-confirmed against this
-//                              repo's own pin, not assumed stale from the profile card),
-//     DS-ACUC-B             - Access Control Unlock Command (unlock a door),
-//     DS-ACSC-B             - Access Control Supervisory Command (Authorization_Mode,
-//                              Lockout, Threat_Level style supervisory control),
-//     AE-AC-B                - report access alarms/events,
+//     DS-RP-A,B, DS-RPM-A,B - ReadProperty + ReadPropertyMultiple (this file
+//                              initiates ReadProperty only - SendReadProperty to a
+//                              peer, key 'd' - and cannot consume the reply: no
+//                              customer callback delivers it, TODO.md #6),
+//     DS-WP-A,B, DS-WPM-B   - WriteProperty (+ initiate: SendWriteProperty, key 'w'),
+//     DS-COV-A,B            - SubscribeCOV (+ initiate: SendSubscribeCOV, key 'r';
+//                              never seen to succeed - the B-ACDC peer has no COV),
+//     DS-ACAD-A             - Access Control Access Door - A (K.1.37): read and write
+//                              ALL forms of ALL standard properties of Access Door
+//                              objects - NOT claimed: only Present_Value is touched,
+//     DS-ACCDI-A            - Access Control Credential Data Input - A (K.1.39) - NOT
+//                              claimed, see TODO.md #5,
+//     DS-ACUC-B             - Access Control User Configuration (K.1.34): read and
+//                              write the standard properties of Access Rights,
+//                              Access User and Access Credential - NOT claimed,
+//                              stack #2150,
+//     DS-ACSC-B             - Access Control Site Configuration (K.1.36): read and
+//                              write the standard properties of Access Point,
+//                              Access Zone, Access Door and Credential Data Input -
+//                              NOT claimed, stack #2150 (Access Point),
+//     AE-AC-B                - generate ACCESS_EVENT notifications (K.2.32) - NOT
+//                              claimed, stack #2044,
 //     AE-ACK-B, AE-INFO-B    - accept AcknowledgeAlarm, answer GetEventInformation,
-//     AE-EL-I-B              - Event Log interface (ReadRange of Log_Buffer),
-//     SCHED-I-B              - Schedule/Calendar initiate,
+//     AE-EL-I-B              - Event Log - Internal (K.2.21): collect event
+//                              notifications in an internal buffer - NOT claimed:
+//                              the Event Log exists, but no notification is ever
+//                              generated, so nothing is collected,
+//     SCHED-I-B              - Schedule internal,
 //     DM-BR-B                - Backup and Restore,
 //     DM-DDB-A,B, DM-DOB-B   - Who-Is/I-Am (answer + initiate), Who-Has/I-Have,
 //     DM-DCC-B               - DeviceCommunicationControl,
@@ -49,7 +63,7 @@
 // so a Life Safety Point/Zone built that way cannot serve almost any property
 // (https://github.com/chipkin/cas-bacnet-stack/issues/2036). This profile does
 // not need Life Safety Point/Zone objects at all (they are not part of Annex
-// L.5), so every line of that object type, its Get/Set callback branches, its
+// L.6.2), so every line of that object type, its Get/Set callback branches, its
 // LifeSafetyOperation responder, and its intrinsic ChangeOfLifeSafety/fault
 // algorithm setup was deleted rather than kept as unreachable dead code that
 // could carry the same class of bug forward into a profile that does not
@@ -86,19 +100,14 @@
 // notification cannot be produced by an application built on this stack today.
 // See TODO.md #1 (the filed stack issue) for the full trace.
 //
-// WHAT THIS FILE DOES INSTEAD, AND WHY IT IS AN HONEST SUBSTITUTE, NOT A FAKE:
-// Access Point 1 ("Copper") carries the REAL Access_Event property the profile
-// requires (cl. 12.31), served by this file exactly like any other enumerated
-// property. This file arms BACnetStack_SetIntrinsicChangeOfStateAlgorithmEnum
-// (a customer-facing, generic intrinsic algorithm - NOT the missing
-// access-specific one) on THAT SAME PROPERTY, so a client sees the correct
-// property change to `granted`(1) and gets a real event notification for it -
-// generated by the stack's own intrinsic-algorithm engine, not synthesised by
-// this file. The one thing that is NOT authentic is the notification's own
-// BACnet Event Type: it is reported as changeOfState(1), not accessEvent(9),
-// because the algorithm that would produce an accessEvent(9) notification is
-// the one confirmed absent above. This is disclosed in the README's support
-// table and TODO.md, not hidden.
+// WHAT THIS FILE DOES INSTEAD: NOTHING THAT GENERATES AN EVENT. Access Point 1
+// ("Copper") carries the real Access_Event property (cl. 12.31), served by this
+// file like any other enumerated property and writable so a client can set it.
+// A generic change-of-state algorithm on it was tried as a substitute and the
+// stack rejects it for an Access Point ("intrinsic algorithm changeOfState is
+// not supported by objectType=[33]" - see the note in main() where Copper's
+// alarms are enabled), so no notification of any kind is produced. AE-AC-B is
+// not claimed.
 //
 // The device keeps the three read-only B-SS sensor objects and the Network
 // Port, and adds the access family:
@@ -107,28 +116,31 @@
 //     Analog Input  1             "Bronze"      (REAL, degrees Celsius; read-only)
 //     Binary Input  1             "Emerald"     (active / inactive; read-only)
 //     Multi-State Input 1         "Hot Pink"    (state 1..3; read-only)
-//     Access Door 1               "Cobalt"      (BACnetDoorValue; WRITABLE, commandable - DS-ACUC-B)
+//     Access Door 1               "Cobalt"      (BACnetDoorValue; WRITABLE, commandable)
 //     Credential Data Input 1     "Flax"        (AuthenticationFactor; read-only, COV-subscribable)
-//     Access Point 1              "Copper"      (Access_Event demo target - AE-AC-B, DS-ACSC-B)
+//     Access Point 1              "Copper"      (Access_Event and Authorization_Mode writable; no event generated)
 //     Access Zone 1                "Ebony"      (Occupancy_State)
 //     Access Credential 1          "Coral"      (Credential_Status)
 //     Access Rights 1              "Cyan"       (Enable; WRITABLE Global_Identifier)
 //     Access User 1                "Denim"      (User_Type; WRITABLE Global_Identifier - profile
-//                                                 delta object, Credentials left unserved: same
-//                                                 constructed-type gap class as #2046, see TODO.md)
-//     Event Log 1                  "Beige"      (accumulates the Access_Event notification - AE-EL-I-B)
+//                                                 delta object, Credentials an empty list: same
+//                                                 constructed-type gap class as #2150, see TODO.md)
+//     Event Log 1                  "Beige"      (logs nothing: no notification is generated)
 //     Schedule 1 / Calendar 1      "Saffron" / "Cream"   (drives Cobalt's lock schedule - SCHED-I-B)
 //     File 1                       "Ivory"      (backup/restore payload carrier - DM-BR-B)
 //     Notification Class 1         "Crimson"    (routes Copper's Access_Event notification)
 //     Network Port 1                "Vermilion" (the BACnet/IP port - required)
 //
-// DS-ACUC-B / DS-ACSC-B: Cobalt's Present_Value (a BACnetDoorValue) is
-// commandable via the same 16-slot Priority_Array pattern every commandable
-// object in this series uses (see B-ACDC's file header for the mechanism) -
-// this is the "unlock command" BIBB. DS-ACSC-B (supervisory command) is
-// demonstrated by Copper's WRITABLE Authorization_Mode - a management station
-// can force `denyAll`/`authorize` the same way a real access panel would be
-// put into lockdown.
+// Door command: Cobalt's Present_Value (a BACnetDoorValue) is commandable via
+// the same 16-slot Priority_Array pattern every commandable object in this
+// series uses (see B-ACDC's file header for the mechanism). Copper's
+// Authorization_Mode is WRITABLE (a management station can write `denyAll` /
+// `authorize`), but it is only stored: nothing in this file makes an access
+// decision for it to gate. (This file's earlier versions called these two
+// writes DS-ACUC-B and DS-ACSC-B. Those BIBBs are "Access Control User
+// Configuration" and "Access Control Site Configuration", K.1.34 / K.1.36:
+// reading and writing ALL the standard properties of the access objects,
+// which stack #2150 prevents.)
 //
 // DS-COV-B: Analog Input 1 (Bronze) and Credential Data Input 1 (Flax)'s
 // Update_Time (NOT Present_Value - see B-ACCR's file header for exactly why
@@ -168,6 +180,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <string> // std::string - g_firmwareRevision, built at runtime; see its own comment below
+#include <time.h>  // time(), localtime_s/localtime_r - the Device's Local_Date / Local_Time
 #include <stdlib.h> // atoi() - used by ParsePeerArgs()
 
 #if defined(_WIN32)
@@ -182,7 +195,7 @@ using namespace CASBACnetStackExampleConstants;
 // 1. Example + device configuration
 // -----------------------------------------------------------------------------
 static const char* APP_NAME = "BACnet Advanced Access Control Controller (B-AACC) Example - C++";
-static const char* APP_VERSION = "1.0.2";
+static const char* APP_VERSION = "1.1.0";
 
 // The device instance. BACnet requires this to be configurable, so it defaults
 // to 389010 (docs/colour-table.md) and can be overridden on the command line
@@ -221,9 +234,9 @@ static const char* DEVICE_NAME = "Chipkin Example B-AACC";
 // this string describes this tutorial and the BIBBs it demonstrates.
 static const char* DEVICE_DESCRIPTION =
     "Chipkin CAS BACnet Stack example - B-AACC (Advanced Access Control Controller) profile. "
-    "Demonstrates DS-RP/RPM/WP/WPM-B, DS-COV-B, DS-ACUC-B, DS-ACSC-B, AE-AC-B, "
-    "AE-ACK-B, AE-INFO-B, AE-EL-I-B, SCHED-I-B, DM-BR-B, DM-DCC-B, DM-RD-B, "
-    "and time synchronisation.";
+    "Blocked Example: does not perform access control (stack #2150, #2044). "
+    "Demonstrates DS-RP/RPM/WP/WPM-B, DS-COV-B, AE-ACK-B, AE-INFO-B, SCHED-I-B, "
+    "DM-BR-B, DM-DCC-B, DM-RD-B, and time synchronisation.";
 
 // Device identity strings (read by clients, and used to populate I-Am).
 //   VENDOR_NAME - your company name; it must match VENDOR_IDENTIFIER above.
@@ -318,11 +331,11 @@ static const uint32_t PROPERTY_IDENTIFIER_GLOBAL_IDENTIFIER = 323;
 // Access User 1 ("Denim")'s User_Type (318, BACnetAccessUserType - REQUIRED, but
 // the stack's own "Generic Enumerated default: 0" (property-profile-reference.md)
 // already answers it correctly with no callback needed) and Credentials (265,
-// BACnetLIST of BACnetDeviceObjectReference - REQUIRED, but grepped against
-// CASBACnetStackDLL.h at the pin: no customer-facing Get callback exists for a
-// BACnetLIST of BACnetDeviceObjectReference, same class of gap as TODO.md #2046
-// / issue #2046 for Access Credential/Rights' constructed-type properties - left
-// unserved here for the same reason, not a new defect).
+// BACnetLIST of BACnetDeviceObjectReference - REQUIRED; there is no
+// customer-facing Get callback for a BACnetLIST of BACnetDeviceObjectReference,
+// the same class of gap as stack issue #2150 for Access Credential/Rights'
+// constructed-type properties. At 6.x @ 64b2cfac5 it reads as an empty list,
+// which this file cannot fill - see TODO.md #2).
 static const uint32_t PROPERTY_IDENTIFIER_USER_TYPE = 318;
 static const uint32_t PROPERTY_IDENTIFIER_CREDENTIALS = 265;
 static const uint32_t PROPERTY_IDENTIFIER_NEGATIVE_ACCESS_RULES = 288;
@@ -392,7 +405,7 @@ static const uint32_t SCHEDULE_INSTANCE = 1;
 static const uint32_t CALENDAR_INSTANCE = 1;
 static const uint8_t SCHEDULE_WRITE_PRIORITY = 12;
 
-// -- Event Log 1 "Beige" (AE-EL-I-B) -----------------------------------------
+// -- Event Log 1 "Beige" (logs nothing - no notification is generated) ------
 static const uint32_t EVENT_LOG_INSTANCE = 1;
 static const uint32_t EVENT_LOG_MAX_BUFFER_SIZE = 64;
 
@@ -569,7 +582,7 @@ bool GetPropertyEnumerated(const uint32_t deviceInstance, const uint16_t objectT
         }
     }
 
-    // -- Copper (Access Point 1) - the AE-AC-B / DS-ACSC-B demo object -----
+    // -- Copper (Access Point 1) - Access_Event / Authorization_Mode demo -----
     if (objectType == OBJECT_TYPE_ACCESS_POINT && objectInstance == 1) {
         if (propertyIdentifier == PROPERTY_IDENTIFIER_ACCESS_EVENT) {
             *value = g_accessEventValue;
@@ -639,6 +652,17 @@ bool GetPropertyUnsignedInteger(const uint32_t deviceInstance, const uint16_t ob
     if (objectType == OBJECT_TYPE_DEVICE && objectInstance == g_deviceInstance &&
         propertyIdentifier == PROPERTY_IDENTIFIER_VENDOR_IDENTIFIER) {
         *value = VENDOR_IDENTIFIER;
+        return true;
+    }
+    // Flax (Credential Data Input 1) Supported_Formats is an ARRAY; its length
+    // (array index 0) comes from here, its one element from
+    // GetPropertyAuthenticationFactorFormat below. Without this the stack cannot
+    // size the array and a read of the whole property answers unknown-property
+    // (found by the discovery Wire Test at stack 6.x @ 64b2cfac5; B-ACCR serves
+    // it the same way).
+    if (objectType == OBJECT_TYPE_CREDENTIAL_DATA_INPUT && objectInstance == 1 &&
+        propertyIdentifier == PROPERTY_IDENTIFIER_SUPPORTED_FORMATS && useArrayIndex && propertyArrayIndex == 0) {
+        *value = 1;
         return true;
     }
     if (objectType == OBJECT_TYPE_NETWORK_PORT && objectInstance == NETWORK_PORT_INSTANCE) {
@@ -720,7 +744,9 @@ bool GetPropertyBool(const uint32_t deviceInstance, const uint16_t objectType,
     }
     // Cream (Calendar 1) - Present_Value (required, no stack default): true
     // when today matches an entry in Date_List. Date_List cannot be
-    // populated through the customer API (see TODO.md #6 / issue #963), so
+    // populated by this file (Cream is a generic object, not the stack's
+    // Calendar engine, which is on the customer API since issue #963 closed -
+    // see TODO.md #3), so
     // this honestly always reports false rather than fabricating a match.
     if (objectType == OBJECT_TYPE_CALENDAR && objectInstance == CALENDAR_INSTANCE &&
         propertyIdentifier == PROPERTY_IDENTIFIER_PRESENT_VALUE) {
@@ -910,8 +936,8 @@ bool GetPropertyAuthenticationFactorFormat(const uint32_t deviceInstance, const 
         objectInstance != 1 || propertyIdentifier != PROPERTY_IDENTIFIER_SUPPORTED_FORMATS) {
         return false;
     }
-    if (useArrayIndex && propertyArrayIndex == 0) {
-        return false; // let the stack answer the ARRAY length (1) itself via its own tracking
+    if (!useArrayIndex || propertyArrayIndex != 1) {
+        return false; // the length (index 0) is GetPropertyUnsignedInteger's; there is one element
     }
     *formatType = 1; // weigand(1) - matches the demo badge bytes in GetPropertyOctetString above
     *useVendorId = false;
@@ -919,6 +945,21 @@ bool GetPropertyAuthenticationFactorFormat(const uint32_t deviceInstance, const 
     *useVendorFormat = false;
     *vendorFormat = 0;
     return true;
+}
+
+// The Device's Local_Date / Local_Time. The stack lists both in the Device's
+// Property_List because this device executes TimeSynchronization and
+// UTCTimeSynchronization (Table 12-13 footnotes 3 and 4), and its Schedule
+// engine reads them, so they have to be answered here: real wall-clock local
+// time. (Found by the discovery Wire Test at stack 6.x @ 64b2cfac5: both read
+// as read-access-denied before.)
+static bool GetCurrentLocalTm(struct tm* out) {
+    const time_t nowSeconds = time(NULL);
+#if defined(_WIN32)
+    return localtime_s(out, &nowSeconds) == 0;
+#else
+    return localtime_r(&nowSeconds, out) != NULL;
+#endif
 }
 
 bool GetPropertyTime(const uint32_t deviceInstance, const uint16_t objectType,
@@ -945,6 +986,18 @@ bool GetPropertyTime(const uint32_t deviceInstance, const uint16_t objectType,
     if (objectType == OBJECT_TYPE_FILE && objectInstance == FILE_INSTANCE &&
         propertyIdentifier == PROPERTY_IDENTIFIER_MODIFICATION_DATE) {
         *hour = 0; *minute = 0; *second = 0; *hundredthSecond = 0;
+        return true;
+    }
+    if (objectType == OBJECT_TYPE_DEVICE && objectInstance == g_deviceInstance &&
+        propertyIdentifier == PROPERTY_IDENTIFIER_LOCAL_TIME) {
+        struct tm nowTm;
+        if (!GetCurrentLocalTm(&nowTm)) {
+            return false;
+        }
+        *hour = (uint8_t)nowTm.tm_hour;
+        *minute = (uint8_t)nowTm.tm_min;
+        *second = (uint8_t)nowTm.tm_sec;
+        *hundredthSecond = 0;
         return true;
     }
     return false;
@@ -977,6 +1030,20 @@ bool GetPropertyDate(const uint32_t deviceInstance, const uint16_t objectType,
         *yearMinus1900 = 126; *month = 1; *day = 1; *weekday = 4;
         return true;
     }
+    if (objectType == OBJECT_TYPE_DEVICE && objectInstance == g_deviceInstance &&
+        propertyIdentifier == PROPERTY_IDENTIFIER_LOCAL_DATE) {
+        struct tm nowTm;
+        if (!GetCurrentLocalTm(&nowTm)) {
+            return false;
+        }
+        *yearMinus1900 = (uint8_t)nowTm.tm_year;
+        *month = (uint8_t)(nowTm.tm_mon + 1);
+        *day = (uint8_t)nowTm.tm_mday;
+        // struct tm's tm_wday is 0=Sunday..6=Saturday; BACnet's BACnetWeekday
+        // is 1=Monday..7=Sunday (ANSI/ASHRAE 135 Clause 21).
+        *weekday = (uint8_t)(((nowTm.tm_wday + 6) % 7) + 1);
+        return true;
+    }
     return false;
 }
 
@@ -995,7 +1062,7 @@ bool SetPropertyEnumerated(const uint32_t deviceInstance, const uint16_t objectT
         return false;
     }
     // Cobalt (Access Door 1): WriteProperty(Present_Value, DoorValue, priority) -
-    // DS-ACUC-B, the "unlock command" this profile exists for.
+    // the door command.
     if (objectType == OBJECT_TYPE_ACCESS_DOOR && objectInstance == 1 &&
         propertyIdentifier == PROPERTY_IDENTIFIER_PRESENT_VALUE) {
         if (value != DOOR_VALUE_LOCK && value != DOOR_VALUE_UNLOCK) {
@@ -1008,9 +1075,8 @@ bool SetPropertyEnumerated(const uint32_t deviceInstance, const uint16_t objectT
         return true;
     }
     // Copper (Access Point 1): WriteProperty(Access_Event, ...) simulates a
-    // credential read at the door - see the file header's AE-AC-B discussion
-    // for why this drives a ChangeOfState-shaped notification rather than a
-    // true ACCESS_EVENT-typed one.
+    // credential read at the door. It changes the property only: no event
+    // notification of any kind follows (stack #2044 - see the file header).
     if (objectType == OBJECT_TYPE_ACCESS_POINT && objectInstance == 1 &&
         propertyIdentifier == PROPERTY_IDENTIFIER_ACCESS_EVENT) {
         g_accessEventValue = value;
@@ -1021,8 +1087,8 @@ bool SetPropertyEnumerated(const uint32_t deviceInstance, const uint16_t objectT
                value == ACCESS_EVENT_DENIED_UNKNOWN_CREDENTIAL ? "(denied - unknown credential)" : "");
         return true;
     }
-    // Copper: WriteProperty(Authorization_Mode, ...) - DS-ACSC-B, the
-    // supervisory command (e.g. force denyAll for lockdown).
+    // Copper: WriteProperty(Authorization_Mode, ...) - e.g. force denyAll for
+    // lockdown. Stored only: no access decision reads it.
     if (objectType == OBJECT_TYPE_ACCESS_POINT && objectInstance == 1 &&
         propertyIdentifier == PROPERTY_IDENTIFIER_AUTHORIZATION_MODE) {
         if (value != AUTHORIZATION_MODE_AUTHORIZE && value != AUTHORIZATION_MODE_DENY_ALL) {
@@ -1482,10 +1548,8 @@ static void SendSubscribeCOVToPeer() {
 // bytes coming back from the peer - is verified independently on the wire
 // with bacpypes3/BAC0 (and by watching the peer B-ACDC-CPP instance's own
 // console for the ReadProperty/WriteProperty it answers). See README.md's
-// "Verify" section for that evidence; this is not a new gap filed against
-// the stack, since AE-AC-B (TODO.md #1) already establishes the same
-// "generation/consumption of async BACnet traffic beyond confirmed
-// service replies isn't on the customer surface" pattern for this pin.
+// "Verify" section for that evidence. No stack issue is filed for this;
+// see TODO.md #6.
 
 // -----------------------------------------------------------------------------
 // 3. main()
@@ -1564,7 +1628,7 @@ int main(int argc, char** argv) {
     const struct { uint32_t service; const char* name; } services[] = {
         { SERVICE_READ_PROPERTY,                 "ReadProperty (DS-RP-B)" },
         { SERVICE_READ_PROPERTY_MULTIPLE,        "ReadPropertyMultiple (DS-RPM-B)" },
-        { SERVICE_WRITE_PROPERTY,                "WriteProperty (DS-WP-B / DS-ACUC-B / DS-ACSC-B)" },
+        { SERVICE_WRITE_PROPERTY,                "WriteProperty (DS-WP-B)" },
         { SERVICE_WRITE_PROPERTY_MULTIPLE,       "WritePropertyMultiple (DS-WPM-B)" },
         { SERVICE_SUBSCRIBE_COV,                 "SubscribeCOV (DS-COV-B)" },
         { SERVICE_DEVICE_COMMUNICATION_CONTROL,  "DeviceCommunicationControl (DM-DCC-B)" },
@@ -1669,7 +1733,7 @@ int main(int argc, char** argv) {
         printf("Error: Failed to enable the optional Door status properties on Cobalt.\n"); return 1;
     }
 
-    // --- Make Cobalt commandable (DS-ACUC-B) ---------------------------------
+    // --- Make Cobalt commandable ----------------------------------------------
     if (!BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_ACCESS_DOOR, 1,
                                         PROPERTY_IDENTIFIER_PRIORITY_ARRAY, true) ||
         !BACnetStack_SetPropertyEnabled(g_deviceInstance, OBJECT_TYPE_ACCESS_DOOR, 1,
@@ -1680,7 +1744,7 @@ int main(int argc, char** argv) {
     }
 
     // --- Copper: Access_Event writable (demo credential-read trigger) +
-    //     Authorization_Mode writable (DS-ACSC-B supervisory command) --------
+    //     Authorization_Mode writable (stored; gates nothing) ----------------
     if (!BACnetStack_SetPropertyWritable(g_deviceInstance, OBJECT_TYPE_ACCESS_POINT, 1,
                                          PROPERTY_IDENTIFIER_ACCESS_EVENT, true) ||
         !BACnetStack_SetPropertyWritable(g_deviceInstance, OBJECT_TYPE_ACCESS_POINT, 1,
@@ -1785,9 +1849,9 @@ int main(int argc, char** argv) {
             printf("Error: Failed to add Saffron's weekday 08:00 transition.\n"); return 1;
         }
     }
-    // One exception: an inline calendar-date entry (Cream's own Date_List
-    // cannot be populated through the customer API - same gap B-AAC's file
-    // header documents against issue #963; see TODO.md).
+    // One exception: an inline calendar-date entry. Cream is a generic object
+    // with an empty Date_List; the stack's Calendar engine is on the customer
+    // API since issue #963 closed but is not used here yet (see TODO.md #3).
     uint32_t exceptionIndex = 0;
     if (!BACnetStack_AddScheduleExceptionEventWithCalendarEntry(g_deviceInstance, SCHEDULE_INSTANCE,
                                                                  0 /*periodType: calendar Date*/, 2026, 12, 25, 255,
@@ -1817,7 +1881,7 @@ int main(int argc, char** argv) {
     // Fire all three A-side keys once automatically at start-up (in addition to
     // being available on demand via 'd'/'w'/'r' below), so a scripted wire-test
     // run (e.g. this file launched from a test harness with no interactive
-    // keyboard) still exercises DS-RP-A / DS-WP-A / DS-COV-B's initiating half
+    // keyboard) still exercises the DS-RP-A / DS-WP-A / DS-COV-A requests
     // without requiring a human to press a key. The peer is expected to already
     // be running - see README.md's Verify section.
     SendReadPropertyToPeer();
