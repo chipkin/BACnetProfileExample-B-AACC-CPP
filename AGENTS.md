@@ -66,8 +66,8 @@ and must be able to build it with the two commands above.
 ## Run
 
 ```bash
-./build/BACnetExampleBAACC [--port 47808] [--deviceID 389010] [--peerIp 127.0.0.1] [--peerPort 47809]   # Linux/macOS
-.\build\Release\BACnetExampleBAACC.exe [--port 47808] [--deviceID 389010] [--peerIp 127.0.0.1] [--peerPort 47809]   # Windows
+./build/BACnetExampleBAACC [--port 47808] [--deviceID 389010] [--deviceName "Chipkin Example B-AACC"] [--peerIp 127.0.0.1] [--peerPort 47809]   # Linux/macOS
+.\build\Release\BACnetExampleBAACC.exe [--port 47808] [--deviceID 389010] [--deviceName "Chipkin Example B-AACC"] [--peerIp 127.0.0.1] [--peerPort 47809]   # Windows
 ```
 
 Interactive keys while running: `h` help, `q` quit, up/down nudge Analog
@@ -139,7 +139,7 @@ after any change. Beyond them, verification is behavioural:
    send **Who-Is** and confirm **I-Am** from the device instance.
 3. **ReadProperty** every required property of every object and confirm the
    values; confirm `Protocol_Revision` is 30 and `Object_List` lists all
-   objects. Expect the six TODO.md #2 properties (stack #2150) to fail.
+   objects. Expect the five TODO.md #2 properties (stack #2150) to fail.
 4. **Door command**: WriteProperty Cobalt's `Present_Value` to `unlock`(1) at a
    priority; confirm `Lock_Status`/`Door_Status` follow; relinquish and
    confirm it falls back to `Relinquish_Default`.

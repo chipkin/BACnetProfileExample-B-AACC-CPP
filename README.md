@@ -13,8 +13,8 @@
 >   the properties that carry the authorization data cannot be served: an
 >   Access Credential's `Authentication_Factors` and `Assigned_Access_Rights`,
 >   an Access Rights object's `Positive_Access_Rules` and
->   `Negative_Access_Rules`, an Access Point's `Access_Doors` (each answers
->   Error unknown-property) and `Access_Event_Credential` (Abort). So another
+>   `Negative_Access_Rules`, and an Access Point's `Access_Doors` (each answers
+>   Error unknown-property). So another
 >   device cannot read or configure who may pass where, and DS-ACUC-B and
 >   DS-ACSC-B cannot be claimed.
 > - **[cas-bacnet-stack#2044](https://github.com/chipkin/cas-bacnet-stack/issues/2044)** -
@@ -49,8 +49,8 @@ everything B-ACC-CPP serves, plus an Access User object and the A-side
   Statement: every object, every property, and who answers it.
 
 > **Versions:** this document describes **example v1.1.0**, built and verified
-> against **CAS BACnet Stack 6.0.23** (`6.x` @ `64b2cfac5`), at
-> **Protocol_Revision 30**, with the vendored `common/` helper at **v3.4.0**.
+> against **CAS BACnet Stack 6.0.23** (`6.x` @ `69b6249f`), at
+> **Protocol_Revision 30**, with the vendored `common/` helper at **v3.5.0**.
 > Running the example prints all three - if what it prints disagrees with this
 > line, trust the program and check `CHANGELOG.md`.
 
@@ -71,8 +71,8 @@ Example note above).
 
 | Object | Name | Notes |
 |---|---|---|
-| Device 389010 | Chipkin Example B-AACC | `--deviceID` overrides |
-| Analog Input 1 | Bronze | REAL, degrees Celsius; read-only; COV-subscribable |
+| Device 389010 | Chipkin Example B-AACC | `--deviceID` / `--deviceName` override |
+| Analog Input 1 | Bronze | REAL, degrees Celsius; read-only; COV-subscribable (COV_Increment 1.0) |
 | Binary Input 1 | Emerald | active/inactive; read-only |
 | Multi-State Input 1 | Hot Pink | state 1..3; read-only |
 | Access Door 1 | Cobalt | BACnetDoorValue; commandable (lock/unlock); SCHED-I-B target |
@@ -86,7 +86,7 @@ Example note above).
 | Schedule 1 | Saffron | writes Cobalt at priority 12 |
 | Calendar 1 | Cream | Date_List empty: added with the generic `AddObject`, not the stack's Calendar engine (TODO.md #3) |
 | File 1 | Ivory | stream access, backup/restore payload |
-| Notification Class 1 | Crimson | routes Copper's alarms |
+| Notification Class 1 | Crimson | routes Copper's alarms; Recipient_List writable |
 | Network Port 1 | Vermilion | BACnet/IP |
 
 ## What this example supports
@@ -261,7 +261,7 @@ Expected output:
 ```
 BACnet Advanced Access Control Controller (B-AACC) Example - C++ v1.1.0
 CAS BACnet Stack version: 6.0.23.0
-Common helper (common/) version: 3.4.0
+Common helper (common/) version: 3.5.0
 FYI: Listening for BACnet/IP on UDP port 47808 (Network Port 1).
 TX 21 bytes to 192.168.3.255:47808 (broadcast) (Network Port 1) - Unconfirmed: I-Am
 TX 8 bytes to 192.168.3.255:47808 (broadcast) (Network Port 1) - Unconfirmed: Who-Is
@@ -304,8 +304,10 @@ cd BACnetProfileExample-B-AACC-CPP
 |--------|---------|---------|
 | `--port <n>` | `47808` | UDP port to listen on (BACnet/IP). |
 | `--deviceID <n>` | `389010` | The device's BACnet instance number (BACnet requires this to be configurable). |
+| `--deviceName <text>` | `Chipkin Example B-AACC` | The Device object's `Object_Name`, 1..255 bytes, no control characters. It must be unique across the BACnet internetwork, so give every unit its own (BACnet requires it to be configurable, like the instance). An invalid value prints a warning and keeps the default. |
 | `--peerIp <a.b.c.d>` | `127.0.0.1` | The A-side peer's IP address. |
 | `--peerPort <n>` | `47809` | The A-side peer's UDP port. |
+| `--xml` | off | Print every received and sent BACnet message as an indented XML block instead of a one-line summary (very verbose; for protocol debugging). |
 | `--help`, `-h` | - | Show usage and exit. |
 | `--version` | - | Print the example, stack, and `common/` helper versions, then exit. |
 
@@ -361,7 +363,7 @@ A Python BACnet client drives the running example over BACnet/IP from outside
 it, the way a client discovers a device - Who-Is, the Device's `Object_List`,
 then for every object its `Property_List` and a ReadProperty of every property
 it lists. Every read must come back as a value, except the Event Log's
-`Log_Buffer`, which the standard makes ReadRange-only. The six properties stack
+`Log_Buffer`, which the standard makes ReadRange-only. The five properties stack
 #2150 cannot serve are reported as `[KNOWN GAP]` lines and do not fail the run.
 Python 3 standard library only:
 

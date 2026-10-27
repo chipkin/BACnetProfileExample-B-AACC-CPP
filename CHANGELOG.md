@@ -5,199 +5,92 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] - unreleased
+## [Unreleased]
 
-### Changed
+_No changes yet._
 
-- **`common/` 3.3.0 -> 3.4.0** and **`wiretest/` 0.5.0 -> 0.6.0**, both copied
-  verbatim (`common/` from B-SS-CPP `5d78299`, `wiretest/` from B-LS-CPP). With
-  `common/` 3.4.0 a broadcast the stack addresses to this socket's own address
-  goes to the subnet broadcast instead; `wiretest/` 0.6.0 only adds helpers.
-  `tests/discovery_test.py` now sends its Who-Is a second time, with a visible
-  `[RETRY]` line, if no I-Am comes back in 3 s: Who-Is is unconfirmed and the
-  example's UDP receive can drop a datagram on Windows. Discovery results are
-  unchanged: 24/24 with the 6 known gaps (stack #2150) on Windows
-  and Linux, no `[RETRY]`.
-- **Labelled a Blocked Example.** The B-AACC Profile Function (authentication
-  and authorization for physical access, configured through the Access User,
-  Access Credential and Access Rights objects, using remote door controllers
-  and readers, and reported as access events; ANSI/ASHRAE 135-2024 L.6.1) cannot be performed through the stack's customer
-  interface: the authorization-data properties cannot be served
-  ([stack #2150](https://github.com/chipkin/cas-bacnet-stack/issues/2150)) and
-  no ACCESS_EVENT notification can be generated
-  ([stack #2044](https://github.com/chipkin/cas-bacnet-stack/issues/2044)). The
-  stack owner ruled on 2026-10-15 that neither is promoted for now. README,
-  PICS, TODO.md, `main.cpp` and the Device's `Description` say so.
-- **BIBB claims corrected** (verified against 135-2024 Annex K): DS-ACUC-B is
-  "Access Control User Configuration" (K.1.34) and DS-ACSC-B is "Access Control
-  Site Configuration" (K.1.36) - reading and writing the standard properties of
-  the access objects - not "Unlock Command" / "Supervisory Command"; both are
-  now **not claimed** (#2150). AE-EL-I-B (K.2.21) is not claimed: nothing is
-  logged because no notification is generated. The README, TODO.md and
-  TUTORIAL no longer say a `changeOfState` notification is produced as an
-  AE-AC-B substitute (the stack rejects that algorithm for an Access Point; no
-  notification of any kind is produced). DS-ACAD-A (K.1.37: all forms of all
-  standard Access Door properties) is not claimed - only the peer door's
-  Present_Value is touched; DS-COV-A is not claimed - it has never succeeded
-  and notifications cannot be received; DS-RP-A is partial - the reply cannot
-  be consumed. The peer is device 389011 "Chipkin Example B-ACDC" (was named
-  "Chipkin Example B-AACC"). PICS: SCHED-I-B is "Internal", Who-Is is
-  initiated at start-up. Annex L.6 -> L.6.1.
-- **Stack Pin moved to `6.x` @ `64b2cfac5` (6.0.23)** from `abd4cee1` (6.0.21).
-  Re-checked on the wire: the Event Log log flood (#2045), the Access_Event
-  write (#2151) and File_Size (#2152) are fixed. DS-ACCDI-A: the stack's
-  Credential Data Input exports are still test-tool only (#492 closed). Calendar exports (#963) are
-  now on the customer interface; Cream does not use them yet (TODO.md #3).
-- **Protocol_Revision 24 -> 30** (stack default at the pin); segmentation is
-  now `segmented-both` (stack #2992).
-- **`common/` 3.0.0 -> 3.3.0**, copied verbatim from B-SS-CPP `b640a81`.
+## [1.1.0] - 2026-10-27
 
-### Fixed
+This is a **Blocked Example**. The CAS BACnet Stack cannot yet perform the full
+B-AACC Profile Function (ANSI/ASHRAE 135-2024 L.6.1) through its customer
+interface. See the note at the top of the README.
 
-Found by the new discovery Wire Test at the new pin:
+- **Does today:** serves everything B-ACC-CPP serves plus an Access User object,
+  and sends ReadProperty, WriteProperty and SubscribeCOV to a peer device's door.
+- **Does not do today:** the authorization data (Access Credential, Access Rights
+  and Access Point rule and door lists) cannot be served, no access-event
+  notification can be generated, and replies to the requests it sends cannot be
+  consumed. It makes no grant or deny decision. The PICS therefore does not claim
+  DS-ACUC-B, DS-ACSC-B, AE-AC-B or AE-EL-I-B.
 
-- The Device's `Local_Date` and `Local_Time` answered read-access-denied: the
-  stack lists them (the device executes TimeSynchronization and
-  UTCTimeSynchronization) but the Date/Time callbacks never served them. They
-  now answer wall-clock local time.
-- Schedule 1 ("Saffron")'s `Present_Value` answered value-not-initialized,
-  because the stack's Schedule engine runs on the Device's `Local_Date` /
-  `Local_Time`. With them served, Saffron evaluates and writes Cobalt.
-- Credential Data Input 1 ("Flax")'s `Supported_Formats` answered
-  unknown-property: the array length (index 0) was never served. It is now,
-  as in B-ACCR.
+Built on CAS BACnet Stack 6.x (`69b6249f`).
 
 ### Added
 
-- **Discovery Wire Test** (`tests/discovery_test.py`, `tests/run_wire_tests.py`,
-  from B-SS-CPP `da3e96f`, with this example's 17-object control list): reads
-  every property in every object's Property_List. Two additions: Event Log
-  `Log_Buffer` must answer read-access-denied (ReadRange only, cl. 12.27.13),
-  and the six #2150 properties are reported as `[KNOWN GAP]`s. 24/24 with 6
-  known gaps on Windows and Linux. CI runs it on Linux after the smoke test.
-- `wiretest/` 0.5.0, vendored verbatim from B-BBMD-CPP `75aedd8`.
-
-## [1.0.2] - unreleased
+- **Automated self-tests** under `tests/`: a discovery test that reads every
+  property of every object, plus time-synchronization and recipient-list tests.
+- **`--deviceName <text>`** sets the Device's `Object_Name` at start-up. The
+  default is unchanged and the name cannot be written over BACnet. `--help` now
+  lists only the options this example reads.
+- **TUTORIAL.md** (extending the example, troubleshooting) and **docs/PICS.md**
+  (Annex A style, including the client-side initiate and execute split).
 
 ### Changed
 
-- **Device renamed from the series' colour placeholder "Rainbow" to "Chipkin
-  Example B-AACC"** so devices from different examples in the series are
-  distinguishable from each other on the same BACnet network - every example
-  previously announced the identical Object_Name "Rainbow", which made two
-  examples on one subnet indistinguishable by name. Sub-object names (Analog
-  Input 1 "Bronze", etc.) are unchanged - only the Device object's name
-  changed. `docs/colour-table.md` (series root) updated to match. APP_VERSION
-  bumped 1.0.1 -> 1.0.2.
-
-## [Unreleased]
+- **Device renamed** from "Rainbow" to "Chipkin Example B-AACC" so examples on one
+  network can be told apart. Object names such as "Bronze" are unchanged.
+- **Build now compiles the stack source directly into the executable**:
+  `cmake -B build -S .` then `cmake --build build --config Release` on every
+  platform; the separate static-library step is gone.
+- **Protocol_Revision is 30** and segmentation is `segmented-both`.
+- **BIBB claims corrected** against Annex K, as listed above. DS-ACAD-A and
+  DS-COV-A are not claimed and DS-RP-A is partial. The peer device is named
+  "Chipkin Example B-ACDC".
+- **Database_Revision reads 16** in the PICS (the stack counts the objects added
+  at start-up, cl. 12.11).
+- **Notification Class 1 `Recipient_List` is writable.** The default entry is the
+  single local-broadcast recipient with Process Identifier 0 (cl. 12.21) and
+  returns at restart.
+- **Access Point 1 `Access_Event_Credential`** now reads as the "no credential"
+  reference (cl. 12.31.30) instead of an error.
 
 ### Fixed
 
-- **`Application_Software_Version` (12) and `Firmware_Revision` (44) were
-  hardcoded and stale** - the same bug found and fixed in the sibling
-  BACnetProfileExample-B-SCHUB-CPP example via a real device read (BACnet
-  Explorer): `Application_Software_Version` reported a hardcoded `"1.0.0"`
-  regardless of the actual build, and `Firmware_Revision` was the same stale
-  `"1.0.0"` constant - it was never meant to be this example's own version at
-  all, it names the underlying platform. Fixed: `Application_Software_Version`
-  now reads `APP_VERSION` directly (one source of truth, can't drift from
-  `--version`'s own banner again). `Firmware_Revision` is now built at
-  runtime from the CAS BACnet Stack's own `BACnetStack_GetAPIMajorVersion()`/
-  `GetAPIMinorVersion()`/`GetAPIPatchVersion()`/`GetAPIBuildVersion()` (the
-  same 4 calls `common/CASExampleHelper.cpp`'s `PrintVersion()` already uses
-  for the startup banner), populated once right after `LoadBACnetFunctions()`
-  succeeds. APP_VERSION bumped 1.0.0 -> 1.0.1.
-
-### Changed
-
-- Restructured the documentation to match the series' new shape (matching
-  `BACnetProfileExample-B-SS-CPP`): `README.md` is cut down to this example
-  only (series framing, generic profile explanation, the old "Before you
-  ship" table, "Get the code", "Link mode", "Troubleshooting", "Extending the
-  example", and the inline "Objects and properties" table all removed or
-  moved out), with a new **[TUTORIAL.md](TUTORIAL.md)** (extending the
-  example, what each object needs served, a worked served-by breakdown for
-  Access Door 1 "Cobalt", reviewing your device, and troubleshooting - every
-  gap carried forward precisely from `TODO.md`) and a new
-  **[docs/PICS.md](docs/PICS.md)** (ANSI/ASHRAE 135 Annex A shape, with the
-  A-side initiate/execute split this profile needs).
-- `docs/objects.json` now includes the Device object (previously omitted
-  from the generated tables), so `docs/PICS.md`'s objects-and-properties
-  section documents all seventeen objects, not sixteen. Regenerating
-  produced zero ⚠ rows.
-- **Build changed from STATIC to the adapter's default SOURCE mode**: the
-  stack's `source/` now compiles straight into the executable, so
-  `tools/build-stack-static.sh` and the `-DCAS_BACNET_STACK_LINK=STATIC`
-  flag are no longer part of the documented build - it is now
-  `cmake -B build -S .` / `cmake --build build --config Release` on every
-  platform, identical to the rest of the series.
-  `.github/workflows/release.yml` no longer builds or caches a prebuilt
-  static library or carries per-OS `lib:` matrix entries; it asserts
-  `CAS_BACNET_STACK_LINK:STRING=SOURCE` instead of `STATIC`, records
-  `"link_mode": "SOURCE"` in `metrics.json`, and packages `TUTORIAL.md` and
-  `docs/PICS.md` alongside the binary. No footprint numbers have been
-  published yet, so there is nothing stale to refresh.
-- `main.cpp`'s `CHANGE ALL OF THIS BEFORE YOU SHIP` block now carries the
-  per-field ship guidance that used to live in the README's table, including
-  the `DEVICE_NAME` uniqueness warning and a note on picking a real
-  `DCC_PASSWORD`.
-- `AGENTS.md` updated to describe the new file layout, the SOURCE-mode
-  build, and a PICS-regeneration verification step.
+- **Access Door 1 now accepts pulse-unlock and extended-pulse-unlock** commands
+  (cl. 12.26.16, 12.26.17) and relinquishes them after the pulse time. The door
+  timings are now 3.0 s, 10.0 s and 3.0 s.
+- **TimeSynchronization and UTCTimeSynchronization set the device clock.**
+  Previously they were acknowledged but ignored.
+- **SubscribeCOV accepts lifetimes up to 8 hours** (was refused above 1 hour).
+- **Analog Input 1 has `COV_Increment`** (1.0), as cl. 12.2 requires for COV.
+- **Device `Local_Date` and `Local_Time` are served**, so Schedule 1 now evaluates
+  and drives the door.
+- **Credential Data Input 1 `Supported_Formats`** is served and lists
+  simple-number32 (it previously listed an invalid format).
+- **Application_Software_Version and Firmware_Revision** report the real build
+  version and stack version instead of a fixed "1.0.0".
+- **Requests no longer go unanswered on Windows** in rare timing cases (shared
+  `common/` 3.5.0, which also adds the `--deviceName` helper).
+- **PICS** lists the COV notification services the device sends.
 
 ## [1.0.0] - 2026-09-15
 
 ### Added
 
-- Initial **B-AACC (Advanced Access Control Controller)** profile example for
-  the CAS BACnet Stack in C++. Seeded from **B-ACC-CPP** (Wave 3, released
-  v1.0.0), extending it rather than rebuilding from scratch: everything
-  B-ACC-CPP serves, plus this profile's own delta. Pinned to the CAS BACnet
-  Stack `6.x` branch at `abd4cee1` (reports 6.0.21), linked as a **STATIC**
-  library; vendors `common/` 2.5.0 (copied verbatim from B-SS-CPP).
-- Implements DS-RP-B, DS-RPM-B, DS-WP-B, DS-WPM-B, DS-COV-B, DS-ACUC-B,
-  DS-ACSC-B, AE-ACK-B, AE-INFO-B, AE-EL-I-B, SCHED-I-B, DM-BR-B, DM-DDB-A/B,
-  DM-DOB-B, DM-DCC-B, DM-TS-B/DM-UTC-B, DM-RD-B (all inherited from B-ACC-CPP
-  unchanged), plus this profile's own delta:
-  - **Access User 1 "Denim"** (new object; `Object_Name`/`Global_Identifier`
-    served and writable; `Reliability`/`User_Type` on the stack's own generic
-    defaults; `Credentials` left unserved - same constructed-type gap class as
-    #2046).
-  - **A-side (client) keys**: `SendReadProperty`, `SendWriteProperty`, and
-    `SendSubscribeCOV` against a peer device (a separately-built local
-    B-ACDC-CPP instance's Access Door 1 "Cobalt"), bound to interactive keys
-    'd'/'w'/'r' and also fired once automatically at start-up.
-- Objects: everything B-ACC-CPP has (base sensors, Access Door 1 "Cobalt",
-  Credential Data Input 1 "Flax", Access Point 1 "Copper", Access Zone 1
-  "Ebony", Access Credential 1 "Coral", Access Rights 1 "Cyan", Event Log 1
-  "Beige", Schedule 1 "Saffron" / Calendar 1 "Cream", File 1 "Ivory",
-  Notification Class 1 "Crimson", Network Port 1 "Vermilion") plus Access
-  User 1 "Denim".
+- Initial **B-AACC (Advanced Access Control Controller)** profile example in C++,
+  extending B-ACC-CPP. Built on CAS BACnet Stack 6.x (`abd4cee1`, 6.0.21).
+- Supports DS-RP-B, DS-RPM-B, DS-WP-B, DS-WPM-B, DS-COV-B, SCHED-I-B, DM-BR-B,
+  DM-DDB-A/B, DM-DOB-B, DM-DCC-B, DM-TS-B, DM-UTC-B, DM-RD-B, AE-ACK-B and
+  AE-INFO-B.
+- Objects: the B-ACC set (sensors, Access Door, Credential Data Input, Access
+  Point, Access Zone, Access Credential, Access Rights, Event Log, Schedule,
+  Calendar, File, Notification Class, Network Port) plus Access User 1 "Denim".
+- Client keys 'd', 'w' and 'r' send ReadProperty, WriteProperty and SubscribeCOV
+  to a peer device (a local B-ACDC-CPP instance), and fire once at start-up.
 
-### Known gaps (see TODO.md; carried forward from B-ACC-CPP plus this
-profile's own delta, each independently re-checked against this repo's own
-pin rather than assumed stale)
+### Known gaps
 
-- AE-AC-B alarm **generation** is not implementable through the customer API
-  at this pin (carried forward unchanged).
-  [chipkin/cas-bacnet-stack#2044](https://github.com/chipkin/cas-bacnet-stack/issues/2044)
-- Several REQUIRED constructed-type access-family properties have no
-  customer-facing Get callback, now also confirmed to include Access User's
-  `Credentials` (`BACnetLIST of BACnetDeviceObjectReference`).
-  [chipkin/cas-bacnet-stack#2046](https://github.com/chipkin/cas-bacnet-stack/issues/2046)
-- `BACnetStack_AddEventLogObject` causes a continuous, non-fatal internal log
-  flood from the first `Tick()` (carried forward).
-  [chipkin/cas-bacnet-stack#2045](https://github.com/chipkin/cas-bacnet-stack/issues/2045)
-- A live WriteProperty to Copper's `Access_Event` currently answers
-  `unknown-object`; a live `AtomicReadFile` against Ivory during an active
-  backup session aborted (both carried forward, neither root-caused).
-- Cream's `Date_List` cannot be populated (inherited gap, stack issue #963).
-- **DS-ACCDI-A stays unimplemented**, re-confirmed directly against this
-  repo's own pinned stack source rather than assumed from the card: issue
-  #492 was resolved at the stack's internal/test-tool level (per the stack's
-  own CHANGELOG), but the actual add/configure Credential Data Input function
-  (`BACnetStackTestTool_AddCredentialDataInputObject`) is still test-tool-only
-  and not reachable from any customer-facing build. See TODO.md #7.
-- The A-side `Send*` calls have no customer-facing callback to observe the
-  peer's reply in-process (confirmed local accept-for-transmission only);
-  verified on the wire independently instead. See TODO.md #8.
+- Access-event notifications (AE-AC-B) cannot be generated, and several
+  access-family list properties, including Access User `Credentials`, cannot be
+  served. Credential Data Input (DS-ACCDI-A) is not implemented.
+- Replies to the client requests cannot be observed in-process.

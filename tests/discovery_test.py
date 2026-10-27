@@ -27,6 +27,7 @@ Exit code 0 = every check passed.
 """
 import argparse
 import sys
+import time
 from pathlib import Path
 
 REPOSITORY = Path(__file__).resolve().parents[1]
@@ -118,7 +119,6 @@ KNOWN_GAPS = {
     ((OBJECT_TYPE_ACCESS_CREDENTIAL, 1), 256): ("Assigned_Access_Rights", "stack #2150"),
     ((OBJECT_TYPE_ACCESS_CREDENTIAL, 1), 257): ("Authentication_Factors", "stack #2150"),
     ((OBJECT_TYPE_ACCESS_POINT, 1), 246): ("Access_Doors", "stack #2150"),
-    ((OBJECT_TYPE_ACCESS_POINT, 1), 249): ("Access_Event_Credential", "stack #2150"),
     ((OBJECT_TYPE_ACCESS_RIGHTS, 1), 288): ("Negative_Access_Rules", "stack #2150"),
     ((OBJECT_TYPE_ACCESS_RIGHTS, 1), 302): ("Positive_Access_Rules", "stack #2150"),
 }
@@ -153,6 +153,44 @@ def outcome(answer):
 
 def is_value(answer):
     return answer.answered and answer.frame.pdu_type == wiretest.PDU_COMPLEX_ACK
+
+# SubscribeCOV (cl. 13.14): Analog Input 1 "Bronze" is COV-subscribable, and the device accepts
+# lifetimes up to 8 hours (main.cpp COV_MAX_SUPPORTED_LIFETIME_SECONDS; the BTL Test Plan requires
+# it for DS-COV-B, 135.1 9.10.1.10). One second more is refused.
+SERVICE_SUBSCRIBE_COV = 5              # BACnetConfirmedServiceChoice subscribeCOV
+COV_PROCESS_IDENTIFIER = 57
+COV_MAX_LIFETIME_SECONDS = 8 * 60 * 60
+
+# Access Door 1 "Cobalt" pulse commands (cl. 12.26.4, 12.26.16): PULSE_UNLOCK (2) is accepted,
+# unlocks the door, and is relinquished at its own priority after Door_Pulse_Time (30 tenths).
+ACCESS_DOOR = (OBJECT_TYPE_ACCESS_DOOR, 1)
+PROPERTY_PRESENT_VALUE = 85
+PROPERTY_LOCK_STATUS = 233
+DOOR_VALUE_LOCK = 0
+DOOR_VALUE_PULSE_UNLOCK = 2
+DOOR_VALUE_UNLOCK = 1
+LOCK_STATUS_UNLOCKED = 1
+PULSE_PRIORITY = 8
+DOOR_PULSE_SECONDS = 3.0
+# Analog Input 1's COV_Increment (cl. 12.2.16): required because the object supports COV
+# reporting (cl. 12.2 footnote 2), as main.cpp serves it.
+PROPERTY_COV_INCREMENT = 22
+EXPECTED_COV_INCREMENT = 1.0
+
+
+def subscribe_cov_request(invoke_id, object_identifier, lifetime=None):
+    """SubscribeCOV-Request (cl. 13.14.1): subscriber-process-identifier [0], monitored-object [1],
+    and for a subscription issue-confirmed-notifications [2] (FALSE) and lifetime [3]; with
+    lifetime=None both are left out, which cancels the subscription."""
+    parameters = (wiretest.context_unsigned(0, COV_PROCESS_IDENTIFIER) +
+                  wiretest.context_object_id(1, *object_identifier))
+    if lifetime is not None:
+        parameters += bytes([0x29, 0x00]) + wiretest.context_unsigned(3, lifetime)   # [2] BOOLEAN FALSE
+    return wiretest.confirmed_request(invoke_id, SERVICE_SUBSCRIBE_COV, parameters)
+
+
+def acked(answer):
+    return answer.answered and answer.frame.pdu_type == wiretest.PDU_SIMPLE_ACK
 
 
 def who_is(client, port, attempts=2):
@@ -223,6 +261,40 @@ def main():
                f"{len(unreadable)} unreadable: " + ", ".join(
                    f"{object_text(object_identifier)} {property_identifier}"
                    for object_identifier, property_identifier in unreadable) if unreadable else "")
+
+        bronze = (wiretest.OBJECT_TYPE_ANALOG_INPUT, 1)
+        record("Analog Input 1 lists COV_Increment in its Property_List (it supports COV reporting, "
+               "cl. 12.2 footnote 2)", PROPERTY_COV_INCREMENT in property_lists.get(bronze, []))
+        cov_increment = client.read_property(args.port, *bronze, PROPERTY_COV_INCREMENT, timeout=2.0)
+        record(f"Analog Input 1 COV_Increment reads {EXPECTED_COV_INCREMENT}",
+               is_value(cov_increment) and cov_increment.value == EXPECTED_COV_INCREMENT, outcome(cov_increment))
+        eight_hours = client.request(lambda invoke_id: subscribe_cov_request(
+            invoke_id, bronze, COV_MAX_LIFETIME_SECONDS), args.port)
+        record("SubscribeCOV on Analog Input 1 with an 8-hour lifetime (28800 s) is accepted (DS-COV-B)",
+               acked(eight_hours), outcome(eight_hours))
+        too_long = client.request(lambda invoke_id: subscribe_cov_request(
+            invoke_id, bronze, COV_MAX_LIFETIME_SECONDS + 1), args.port)
+        record("SubscribeCOV with a lifetime one second over 8 hours is refused",
+               too_long.error is not None, outcome(too_long))
+        cancelled = client.request(lambda invoke_id: subscribe_cov_request(invoke_id, bronze), args.port)
+        record("SubscribeCOV cancellation (no lifetime) is accepted", acked(cancelled), outcome(cancelled))
+
+        pulse = client.write_property(args.port, *ACCESS_DOOR, PROPERTY_PRESENT_VALUE,
+                                      wiretest.application_enumerated(DOOR_VALUE_PULSE_UNLOCK), priority=PULSE_PRIORITY)
+        record("Access Door 1 accepts Present_Value PULSE_UNLOCK at priority 8 (cl. 12.26.4)", acked(pulse), outcome(pulse))
+        during = client.read_property(args.port, *ACCESS_DOOR, PROPERTY_PRESENT_VALUE)
+        lock_status = client.read_property(args.port, *ACCESS_DOOR, PROPERTY_LOCK_STATUS)
+        record("during the pulse Present_Value reads PULSE_UNLOCK and Lock_Status reads unlocked",
+               is_value(during) and during.value == DOOR_VALUE_PULSE_UNLOCK and
+               is_value(lock_status) and lock_status.value == LOCK_STATUS_UNLOCKED,
+               f"{outcome(during)}; Lock_Status {outcome(lock_status)}")
+        time.sleep(DOOR_PULSE_SECONDS + 1.0)
+        after = client.read_property(args.port, *ACCESS_DOOR, PROPERTY_PRESENT_VALUE)
+        # Schedule 1 (Saffron) holds Cobalt unlocked at priority 12 on weekdays from 08:00 (device
+        # clock), so once the pulse (priority 8) is relinquished Present_Value reads LOCK before that
+        # time and UNLOCK after it. Either proves the pulse ended; PULSE_UNLOCK would mean it did not.
+        record("after Door_Pulse_Time (3.0 s) the pulse is relinquished and Present_Value reads LOCK, or UNLOCK while Saffron holds the door open (cl. 12.26.16)",
+               is_value(after) and after.value in (DOOR_VALUE_LOCK, DOOR_VALUE_UNLOCK), outcome(after))
 
         # The three Explorer reported, by name - listed in Property_List and readable.
         network_port_list = property_lists.get(NETWORK_PORT, [])

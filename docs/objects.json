@@ -22,28 +22,28 @@
         "Max_APDU_Length_Accepted",
         "Segmentation_Supported",
         "APDU_Timeout",
-        "Number_Of_APDU_Retries",
-        "Database_Revision"
+        "Number_Of_APDU_Retries"
       ],
-      "note": "the device itself; the instance is configurable with --deviceID. The stack rows are device-wide facts only the stack knows - the protocol version and revision it implements, the services and object types it was configured with, the live object list and address-binding table. The accepted rows are the stack's configured defaults for APDU limits, segmentation, system status and database revision; an application that answered them from its own constants could contradict the stack, so this example does not",
+      "note": "the device itself; the instance is configurable with --deviceID and the Object_Name with --deviceName (both at start-up; the heading shows the defaults). The stack rows are device-wide facts only the stack knows - the protocol version and revision it implements, the services and object types it was configured with, the live object list and address-binding table, and Database_Revision, which the stack starts at 0 and increments for each object added at start-up: it reads 16 (the sixteen objects main.cpp adds after the Device) and stays 16, because nothing creates, deletes or renames an object afterwards (a door command or a property write changes a value, not the object database). The accepted rows are the stack's configured defaults for APDU limits, segmentation and system status; an application that answered them from its own constants could contradict the stack, so this example does not",
       "stack": [
         "Object_List",
         "Protocol_Version",
         "Protocol_Revision",
         "Protocol_Services_Supported",
         "Protocol_Object_Types_Supported",
-        "Device_Address_Binding"
+        "Device_Address_Binding",
+        "Database_Revision"
       ]
     },
     {
       "type": "Analog Input",
       "instance": 1,
       "name": "Bronze",
-      "app": ["Present_Value", "Object_Name", "Units", "Out_Of_Service"],
-      "enabled": [],
+      "app": ["Present_Value", "Object_Name", "Units", "Out_Of_Service", "COV_Increment"],
+      "enabled": ["COV_Increment"],
       "writable": [],
       "accepted": ["Event_State"],
-      "note": "REAL, degrees Celsius; starts at 21.5. Present_Value is DS-COV-B subscribable; the up/down key feeds subscribers via BACnetStack_UpdateValue"
+      "note": "REAL, degrees Celsius; starts at 21.5. Present_Value is DS-COV-B subscribable; the up/down key feeds subscribers via BACnetStack_UpdateValue. COV_Increment 1.0 (required: the object supports COV reporting, cl. 12.2 footnote 2)"
     },
     {
       "type": "Binary Input",
@@ -83,7 +83,7 @@
       "enabled": [],
       "writable": [],
       "accepted": ["Event_State"],
-      "note": "canonical pattern: B-ACCR. AuthenticationFactor (weigand demo badge) via GetPropertyOctetString + GetPropertyAuthenticationFactorFormat for Supported_Formats; Update_Time (NOT Present_Value) is DS-COV-B subscribable, per B-ACCR's file header. WriteProperty-verified: RP returns a real AuthenticationFactor and Update_Time=08:00:00.00 at start-up"
+      "note": "canonical pattern: B-ACCR. AuthenticationFactor (a four-octet demo badge) via GetPropertyOctetString + GetPropertyAuthenticationFactorFormat for Supported_Formats, which lists simple-number32 (4); Update_Time (NOT Present_Value) is DS-COV-B subscribable, per B-ACCR's file header. WriteProperty-verified: RP returns a real AuthenticationFactor and Update_Time=08:00:00.00 at start-up"
     },
     {
       "type": "Access Point",
@@ -181,9 +181,9 @@
       "name": "Crimson",
       "app": ["Object_Name"],
       "enabled": [],
-      "writable": [],
+      "writable": ["Recipient_List"],
       "accepted": ["Priority", "Ack_Required", "Recipient_List"],
-      "note": "Genuinely populated by BACnetStack_AddNotificationClassObject/AddRecipientToNotificationClass at start-up (same convention as B-LSC's Crimson); accepted only because the generic table cannot credit that host-configuration API. Currently unused for alarm routing given TODO.md #1's finding (no algorithm can be armed on Copper) - kept in the object model because AddRecipientToNotificationClass/SetAlarmsAndEventsForObjectEnabled were still exercised and returned success"
+      "note": "Genuinely populated by BACnetStack_AddNotificationClassObject/AddRecipientToNotificationClass at start-up (same convention as B-LSC's Crimson); accepted only because the generic table cannot credit that host-configuration API. Currently unused for alarm routing given TODO.md #1's finding (no algorithm can be armed on Copper) - kept in the object model because AddRecipientToNotificationClass/SetAlarmsAndEventsForObjectEnabled were still exercised and returned success. Recipient_List is writable (BACnetStack_SetPropertyWritable; the stack stores a written list): the seeded entry is the default, and a read-only list would have to be cl. 12.21's single unconfirmed local-broadcast entry with Process Identifier 0"
     },
     {
       "type": "Network Port",

@@ -58,22 +58,58 @@ explained below.
    **`FD_Subscription_Lifetime` (419)** are each listed and read as a value -
    the three reads Chipkin BACnet Explorer found failing at stack 6.0.21
    (reported against B-SS-CPP as #20, #21, #22).
+5. **Access Door 1 pulse**: Present_Value PULSE_UNLOCK at priority 8 gets a
+   SimpleACK; during the pulse Present_Value reads PULSE_UNLOCK and Lock_Status
+   unlocked; after Door_Pulse_Time (3.0 s) Present_Value reads LOCK again
+   (135-2024 cl. 12.26.4, 12.26.16).
 
 Additions to the B-SS test:
 
+- **DS-COV-B on Analog Input 1:** it lists `COV_Increment` (22) in its
+  `Property_List` and it reads 1.0 (required where an Analog Input supports COV
+  reporting, cl. 12.2 footnote 2); a SubscribeCOV with an 8-hour lifetime
+  (28800 s) is SimpleACKed (the BTL Test Plan requires 8-hour lifetimes for
+  DS-COV-B, 135.1 9.10.1.10), one with 28801 s is refused with an Error, and the
+  cancellation is SimpleACKed.
 - **Event Log 1 `Log_Buffer` (131) must answer Error property /
   read-access-denied**, and is its own check. The standard makes it
   ReadRange-only: "The log buffer is not network accessible except through the
   use of the ReadRange service" (cl. 12.27.13), and cl. 15.5.1.3.1 answers "The
   property is not accessible using this service" with PROPERTY /
   READ_ACCESS_DENIED. A value would fail it too.
-- **Six properties are `[KNOWN GAP]`s** (stack #2150, TODO.md #2): Access
+- **Five properties are `[KNOWN GAP]`s** (stack #2150, TODO.md #2): Access
   Credential `Assigned_Access_Rights` and `Authentication_Factors`, Access
-  Point `Access_Doors` and `Access_Event_Credential`, Access Rights
-  `Negative_Access_Rules` and `Positive_Access_Rules`. Each is read and
+  Point `Access_Doors`, Access Rights `Negative_Access_Rules` and
+  `Positive_Access_Rules`. (Access Point `Access_Event_Credential` was a sixth
+  until Stack Pin `69b6249f`, where it reads as a value; it is now checked like
+  every other property.) Each is read and
   reported on every run without failing it; when one reads as a value the run
   prints `[GAP CLOSED]`. (Access User 1 `Credentials` reads as an empty list, so
   it passes; TODO.md #2 says why that is still a gap.)
+
+## `recipient_list_test.py` - Notification Class 1's Recipient_List is writable
+
+1. The default list (the entry `main.cpp` seeds) reads back as one
+   BACnetDestination.
+2. A WriteProperty of a two-entry list (Device 389110, Process Identifier 2,
+   confirmed; Device 389111, Process Identifier 3, unconfirmed, to-offnormal
+   only) is SimpleACKed and reads back unchanged.
+3. Writing the default back is SimpleACKed and reads back unchanged.
+
+On a binary where the list is read-only, both writes answer Error PROPERTY /
+WRITE_ACCESS_DENIED (2/5). Delivery is not tested: this example generates no
+event notification (TODO.md #1).
+
+## `time_sync_test.py` - a workstation sets the device clock (DM-TS-B, DM-UTC-B)
+
+1. Control: before any sync, Local_Date is the host's date.
+2. TimeSynchronization 2026-12-25 10:00 -> Local_Date reads 2026-12-25 and
+   Local_Time about 10:00.
+3. UTCTimeSynchronization Monday 2026-10-19 07:00 (UTC_Offset 0) -> Local_Date
+   2026-10-19, Local_Time about 07:00.
+
+Before the fix the device acknowledged both requests but Local_Date / Local_Time
+kept reporting the host clock.
 
 ## It fails without the fix
 
@@ -107,7 +143,7 @@ the run failed with 11 unreadable reads (Windows STATIC):
   B-ACCR does.
 
 The remaining eight are `Log_Buffer` (correct, see above) and the six #2150
-gaps.
+gaps (five at Stack Pin `69b6249f`).
 
 ## Results
 
