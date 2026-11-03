@@ -157,7 +157,7 @@ object-name: "Chipkin Example B-AACC"
 object-type: DEVICE
 apdu-segment-timeout: 5000
 apdu-timeout: 10000
-application-software-version: "1.1.0"
+application-software-version: "1.1.1"
 daylight-savings-status: ?
 description: ""
 device-address-binding: ?
@@ -255,7 +255,7 @@ object-name: "Cobalt"
 object-type: ACCESS_DOOR
 event-state: NORMAL
 out-of-service: FALSE
-present-value: LOCK W
+present-value: ? W
 priority-array: {?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?} R
 reliability: NO-FAULT-DETECTED
 relinquish-default: LOCK
@@ -264,8 +264,8 @@ door-extended-pulse-time: 100
 door-open-too-long-time: 30
 door-pulse-time: 30
 door-status: CLOSED
-lock-status: LOCKED
-secured-status: SECURED
+lock-status: ?
+secured-status: ?
 current-command-priority: 12
 },
 {

@@ -1,9 +1,10 @@
 # TODO - known gaps
 
-Stack Pin: `6.x` @ `69b6249f` (6.0.23). Every entry was re-checked at `64b2cfac5`
-on 2026-10-15, on the wire where it can be observed. At `69b6249f` (2026-10-26)
-item 2 was re-checked on the wire (one of its six properties now reads) and item
-1 in the customer header (the access-event algorithm is still test-tool only).
+At v1.1.1, Stack Pin `6.x` @ `1e7dffe2b` (6.0.23). Every entry was re-checked at
+`64b2cfac5` on 2026-10-15, on the wire where it can be observed. At `1e7dffe2b`
+item 2 was re-checked on the wire (2026-11-01), item 1 in the customer header
+(the access-event algorithm is still test-tool only) and item 8 by the full
+VeriBACnet run of 2026-11-02.
 
 **This is a Blocked Example.** The B-AACC Profile Function (ANSI/ASHRAE
 135-2024 L.6.1: "performs physical access control authentication and
@@ -37,29 +38,34 @@ anything.
 
 **Stack issue:** [chipkin/cas-bacnet-stack#2150](https://github.com/chipkin/cas-bacnet-stack/issues/2150) (open; not promoted; part A of [#2046](https://github.com/chipkin/cas-bacnet-stack/issues/2046)).
 
-The discovery Wire Test reads every property in every object's
-`Property_List`. At this pin five required properties do not read as a value
-(Windows; at `64b2cfac5` Windows and Linux gave the same answers):
+Five required properties carry the authorization data:
 
-| Object | Property | Answer |
-|---|---|---|
-| Access Credential 1 "Coral" | `Assigned_Access_Rights` (256) | Error property / unknown-property |
-| Access Credential 1 "Coral" | `Authentication_Factors` (257) | Error property / unknown-property |
-| Access Point 1 "Copper" | `Access_Doors` (246) | Error property / unknown-property |
-| Access Rights 1 "Cyan" | `Negative_Access_Rules` (288) | Error property / unknown-property |
-| Access Rights 1 "Cyan" | `Positive_Access_Rules` (302) | Error property / unknown-property |
+| Object | Property |
+|---|---|
+| Access Credential 1 "Coral" | `Assigned_Access_Rights` (256) |
+| Access Credential 1 "Coral" | `Authentication_Factors` (257) |
+| Access Point 1 "Copper" | `Access_Doors` (246) |
+| Access Rights 1 "Cyan" | `Negative_Access_Rules` (288) |
+| Access Rights 1 "Cyan" | `Positive_Access_Rules` (302) |
+
+Up to `69b6249f` each answered Error property / unknown-property. At
+`1e7dffe2b` the stack answers each with an empty list, so the discovery Wire
+Test (Windows, 2026-11-01) prints `[GAP CLOSED]` for all five. That closes the
+read error only: the customer interface still has no typed Get callback for
+these constructed types, so the example cannot put a credential, a rule or a
+door in them.
 
 A sixth, Access Point 1 `Access_Event_Credential` (249), answered Abort at
-`64b2cfac5`; at `69b6249f` it reads as the "no credential" reference
+`64b2cfac5`; since `69b6249f` it reads as the "no credential" reference
 (accessCredential, 4194303) cl. 12.31.30 asks for (stack #4194), and the Wire
-Test now requires it to read as a value. The five above are unchanged.
+Test requires it to read as a value.
 
 They say which credential carries which factors and rights, and which rules
 allow whom through which point. Without them another device cannot read or
 configure the authorization data, which is the Profile Function and the
-substance of DS-ACUC-B (K.1.34) and DS-ACSC-B (K.1.36). The Wire Test reports
-each as a `[KNOWN GAP]`; when one starts reading as a value it prints
-`[GAP CLOSED]`.
+substance of DS-ACUC-B (K.1.34) and DS-ACSC-B (K.1.36). The Wire Test still
+lists them as known gaps; turning them into checked requirements waits on
+#2150, when they can hold the example's own data.
 
 Same class, not named in #2150: Access User 1 ("Denim")'s required
 `Credentials` (265, BACnetLIST of BACnetDeviceObjectReference) reads as an
@@ -121,12 +127,9 @@ Access Point 1 ("Copper") `Authorization_Mode` is writable, stored, and gates
 nothing. It accepts `authorize` (0) and `denyAll` (2) and refuses the other four
 defined values with `VALUE_OUT_OF_RANGE`. That is legal, but a client that writes
 another defined value is refused. Accepting all six is a small example change; it
-does not unblock anything. (ref: `chipkin/chipkin-bacnet-testing-tool` profile
-re-test records, wave 4.)
+does not unblock anything.
 
 ## 8. Coverage gaps the test tool still reports
 
-The BTL run reports DS-ACUC-B and DS-ACSC-B "at least one" option coverage gaps
-(ref: `chipkin/chipkin-bacnet-testing-tool#648`) and four FAILs that are all
-stack #2150 (BTL 7.1.1, 9.20.1.7, 9.20.1.9, 9.20.1.16). No FAIL has an example
-cause at this release.
+The full VeriBACnet run at this release (2026-11-02) has no FAIL. DS-ACUC-B and
+DS-ACSC-B are not claimed, so their tests are not run.

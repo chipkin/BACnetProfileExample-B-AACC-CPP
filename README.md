@@ -13,8 +13,8 @@
 >   the properties that carry the authorization data cannot be served: an
 >   Access Credential's `Authentication_Factors` and `Assigned_Access_Rights`,
 >   an Access Rights object's `Positive_Access_Rules` and
->   `Negative_Access_Rules`, and an Access Point's `Access_Doors` (each answers
->   Error unknown-property). So another
+>   `Negative_Access_Rules`, and an Access Point's `Access_Doors` (at this
+>   stack version each reads as an empty list the example cannot fill). So another
 >   device cannot read or configure who may pass where, and DS-ACUC-B and
 >   DS-ACSC-B cannot be claimed.
 > - **[cas-bacnet-stack#2044](https://github.com/chipkin/cas-bacnet-stack/issues/2044)** -
@@ -48,9 +48,9 @@ everything B-ACC-CPP serves, plus an Access User object and the A-side
 - **[docs/PICS.md](docs/PICS.md)** - the Protocol Implementation Conformance
   Statement: every object, every property, and who answers it.
 
-> **Versions:** this document describes **example v1.1.0**, built and verified
-> against **CAS BACnet Stack 6.0.23** (`6.x` @ `69b6249f`), at
-> **Protocol_Revision 30**, with the vendored `common/` helper at **v3.5.0**.
+> **Versions:** this document describes **example v1.1.1**, built and verified
+> against **CAS BACnet Stack 6.0.23** (`6.x` @ `1e7dffe2b`), at
+> **Protocol_Revision 30**, with the vendored `common/` helper at **v3.6.1**.
 > Running the example prints all three - if what it prints disagrees with this
 > line, trust the program and check `CHANGELOG.md`.
 
@@ -259,9 +259,9 @@ point CMake at it: `cmake -B build -S . -D CAS_STACK_DIR=/path/to/cas-bacnet-sta
 Expected output:
 
 ```
-BACnet Advanced Access Control Controller (B-AACC) Example - C++ v1.1.0
+BACnet Advanced Access Control Controller (B-AACC) Example - C++ v1.1.1
 CAS BACnet Stack version: 6.0.23.0
-Common helper (common/) version: 3.5.0
+Common helper (common/) version: 3.6.1
 FYI: Listening for BACnet/IP on UDP port 47808 (Network Port 1).
 TX 21 bytes to 192.168.3.255:47808 (broadcast) (Network Port 1) - Unconfirmed: I-Am
 TX 8 bytes to 192.168.3.255:47808 (broadcast) (Network Port 1) - Unconfirmed: Who-Is
@@ -363,8 +363,9 @@ A Python BACnet client drives the running example over BACnet/IP from outside
 it, the way a client discovers a device - Who-Is, the Device's `Object_List`,
 then for every object its `Property_List` and a ReadProperty of every property
 it lists. Every read must come back as a value, except the Event Log's
-`Log_Buffer`, which the standard makes ReadRange-only. The five properties stack
-#2150 cannot serve are reported as `[KNOWN GAP]` lines and do not fail the run.
+`Log_Buffer`, which the standard makes ReadRange-only. The five properties of
+stack #2150 are checked as known gaps and do not fail the run: at this stack
+version they read as empty lists, so each prints `[GAP CLOSED]`.
 Python 3 standard library only:
 
 ```bash
@@ -397,7 +398,7 @@ There is one example repository per standardized device profile in ASHRAE 135-20
 
 | Profile | C++ | Node.js | C# | Rust | Python | Go |
 |---|---|---|---|---|---|---|
-| **B-LSC** Life Safety Controller | [B-LSC-CPP](https://github.com/chipkin/BACnetProfileExample-B-LSC-CPP) 🚧 | Ask | Ask | Ask | Ask | Ask |
+| **B-LSC** Life Safety Controller | [B-LSC-CPP](https://github.com/chipkin/BACnetProfileExample-B-LSC-CPP) | Ask | Ask | Ask | Ask | Ask |
 | **B-ALSC** Advanced Life Safety Controller | [B-ALSC-CPP](https://github.com/chipkin/BACnetProfileExample-B-ALSC-CPP) | Ask | Ask | Ask | Ask | Ask |
 
 ### Access control controllers (Annex L.6)
@@ -465,7 +466,7 @@ Client-side profiles.
 | **B-EWS** Elevator Workstation | planned | — | — | — | — | — |
 | **B-AEWS** Advanced Elevator Workstation | planned | — | — | — | — | — |
 
-🚧 = in progress. ⛔ = Blocked Example (blocked on the named stack gap). "Ask" = not yet built for that language; contact Chipkin if you need it. Profile definitions: ANSI/ASHRAE 135-2024 Annex L. BIBB definitions: Annex K. Get the stack: <https://store.chipkin.com/services/stacks/bacnet-stack>.
+⛔ = Blocked Example (blocked on the named stack gap). "Ask" = not yet built for that language; contact Chipkin if you need it. Profile definitions: ANSI/ASHRAE 135-2024 Annex L. BIBB definitions: Annex K. Get the stack: <https://store.chipkin.com/services/stacks/bacnet-stack>.
 <!-- PROFILE-TABLE:END -->
 
 ## References

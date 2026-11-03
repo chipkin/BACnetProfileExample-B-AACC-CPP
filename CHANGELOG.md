@@ -7,7 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-_No changes yet._
+## [1.1.1] - 2026-11-02
+
+Built on CAS BACnet Stack 6.x (`1e7dffe2b`).
+
+This is still a **Blocked Example**, blocked on
+[chipkin/cas-bacnet-stack#2150](https://github.com/chipkin/cas-bacnet-stack/issues/2150)
+and [#2044](https://github.com/chipkin/cas-bacnet-stack/issues/2044). It makes
+no grant or deny decision and generates no access-event notification.
+
+### Changed
+
+- **CAS BACnet Stack updated** to 6.x (`1e7dffe2b`). At this version the stack
+  no longer gives the example an address for a broadcast it sends on its own,
+  such as the I-Am that answers a Who-Is; the vendored helper chooses it (next
+  item). An Access Credential's `Assigned_Access_Rights` and
+  `Authentication_Factors`, an Access Rights object's `Positive_Access_Rules`
+  and `Negative_Access_Rules`, and an Access Point's `Access_Doors` now read as
+  an empty list instead of Error unknown-property; the example still cannot
+  fill them (#2150).
+- **Vendored `common/` updated to 3.6.1.** A broadcast the stack sends without
+  a destination address (a network layer message, or an unconfirmed I-Am or
+  I-Have) is broadcast on the subnet and also sent unicast to the last client
+  heard from on another UDP port of the same host, so a tool running beside
+  the example still hears the answer. Event notifications and BBMD-forwarded
+  messages are not copied. See `common/CHANGELOG.md`.
+- **VeriBACnet project** (`tests/veribacnet/`): the EPICS no longer gives a
+  fixed state for Access Door 1, whose state follows the Schedule.
+- **README**: the five authorization-data properties are described as they
+  read at this stack version; the profile example table is the same in every
+  example, with the five blocked examples marked with their open stack issue.
+- **TODO.md** brought up to date for this version.
 
 ## [1.1.0] - 2026-10-27
 

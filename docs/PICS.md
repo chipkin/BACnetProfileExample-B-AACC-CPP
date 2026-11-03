@@ -17,7 +17,7 @@ see [README.md](../README.md).
 | **Vendor Identifier** | 389 |
 | **Product Name** | CAS BACnet Stack Example - B-AACC |
 | **Product Model Number** | CAS BACnet Stack Example - B-AACC |
-| **Application Software Version** | 1.1.0 |
+| **Application Software Version** | 1.1.1 |
 | **Firmware Revision** | 6.0.23.0 (the CAS BACnet Stack version) |
 | **BACnet Protocol Version** | 1 |
 | **BACnet Protocol Revision** | 30 |
@@ -73,7 +73,7 @@ see §3 and [TODO.md](../TODO.md).
 
 **DS-ACUC-B and DS-ACSC-B** (K.1.34, K.1.36) mean answering reads and writes
 of the standard properties of the access objects. At the Stack Pin (`6.x` @
-`69b6249f`) five required properties cannot be served through the customer
+`1e7dffe2b`) five required properties cannot be served through the customer
 interface (Access Credential `Authentication_Factors`,
 `Assigned_Access_Rights`; Access Rights `Positive_Access_Rules`,
 `Negative_Access_Rules`; Access Point `Access_Doors` - each Error
